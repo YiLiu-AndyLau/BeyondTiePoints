@@ -1,0 +1,5 @@
+*.sh
+datasets/
+weights/
+results/
+tmp/
