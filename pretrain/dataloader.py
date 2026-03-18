@@ -495,8 +495,8 @@ class PretrainDataset(Dataset):
 
 class ImageSampler(Sampler):
     """
-    为所有rank提供相同的大图索引序列。
-    确保在每个iteration，所有GPU都在处理同一张大图。
+    rank。
+    iteration，GPU。
     """
     def __init__(self, data_source, shuffle=True):
         self.data_source = data_source
@@ -508,8 +508,8 @@ class ImageSampler(Sampler):
         indices = list(range(n))
         
         if self.shuffle:
-            # 使用epoch作为种子，确保每个epoch的shuffle顺序不同，
-            # 但在所有进程中给定epoch的shuffle顺序是相同的。
+            # epoch，epochshuffle，
+            # epochshuffle。
             g = torch.Generator()
             g.manual_seed(self.epoch)
             indices = torch.randperm(n, generator=g).tolist()

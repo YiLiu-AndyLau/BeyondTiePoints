@@ -1,6 +1,5 @@
 import os
 import time
-import sys
 import numpy as np
 import cv2
 from typing import List, Tuple, Dict
@@ -10,15 +9,13 @@ import rasterio
 from rasterio.transform import from_origin
 from pyproj import CRS
 
-from tqdm import tqdm
-import torch.distributed as dist
+import adjustment_core.ddp as ddp
 
-# 假设的外部依赖
 from rs_image import RSImage
 
 
 def format_time(seconds: float) -> str:
-    """将秒数格式化为 HH:MM:SS """
+    """Format seconds as HH:MM:SS."""
     seconds = int(seconds)
     hours = seconds // 3600
     minutes = (seconds % 3600) // 60
@@ -30,11 +27,10 @@ def orthorectify_patch_mercator(rs_image: RSImage,
                               resolution: float, 
                               output_path: str = None) -> Tuple[np.ndarray, rasterio.Affine]:
     """
-    (新) 使用调整后的RPC和Mercator网格，对单个RSImage进行正射校正。
-    (修改) output_path 变为可选，如果为 None，则不保存文件。
+    Orthorectify one RSImage patch on a Mercator grid using adjusted RPC.
+    If output_path is None, no file is written.
     """
     
-    # 1. 定义输出网格 (Mercator, EPSG:3857)
     all_x = grid_diag[:, 0]
     all_y = grid_diag[:, 1]
     min_x = np.min(all_x)
@@ -46,16 +42,15 @@ def orthorectify_patch_mercator(rs_image: RSImage,
     out_H = int(np.ceil((max_y - min_y) / resolution))
     
     if out_W <= 0 or out_H <= 0:
-        raise ValueError(f"输出尺寸为零或负数 (W:{out_W}, H:{out_H})。请检查 grid_diag 和 resolution。Grid Diag: {grid_diag}")
+        raise ValueError(f"Output size is zero or negative (W:{out_W}, H:{out_H})。Please check grid_diag and resolution.Grid Diag: {grid_diag}")
 
     transform = from_origin(min_x, max_y, resolution, resolution)
     
     out_x_coords = np.linspace(min_x + resolution / 2, max_x - resolution / 2, out_W)
-    out_y_coords = np.linspace(max_y - resolution / 2, min_y + resolution / 2, out_H) # Y轴反向
+    out_y_coords = np.linspace(max_y - resolution / 2, min_y + resolution / 2, out_H)
     
     out_xx, out_yy = np.meshgrid(out_x_coords, out_y_coords)
     
-    # 2. 创建源影像和DEM的插值器 (基于 'line' 和 'samp')
     H_src, W_src = rs_image.image.shape[:2]
     lines_src = np.arange(H_src)
     samps_src = np.arange(W_src)
@@ -65,11 +60,9 @@ def orthorectify_patch_mercator(rs_image: RSImage,
     image_interpolator_b = RegularGridInterpolator((lines_src, samps_src), rs_image.image[..., 2], method='linear', bounds_error=False, fill_value=0)
 
 
-    # 3. 准备输出数组
     ortho_image = np.zeros((out_H, out_W, 3), dtype=rs_image.image.dtype)
     
-    # 4. 分块处理 (Ground-to-Image)
-    block_size = 1024 # 可调
+    block_size = 1024
     for i in range(0, out_H, block_size):
         i_end = min(i + block_size, out_H)
         for j in range(0, out_W, block_size):
@@ -83,8 +76,7 @@ def orthorectify_patch_mercator(rs_image: RSImage,
             try:
                 sampline_pred = rs_image.xy_to_sampline(xy_points) 
             except Exception as e:
-                if not rs_image.options.auto:
-                    print(f"警告: xy_to_sampline 在投影时失败 (Grid: {output_path}): {e}")
+                print(f"Warning: xy_to_sampline projection failed (Grid: {output_path}): {e}")
                 continue 
                 
             points_to_sample = np.stack([sampline_pred[:, 1], sampline_pred[:, 0]], axis=-1) # (line, samp)
@@ -100,7 +92,7 @@ def orthorectify_patch_mercator(rs_image: RSImage,
             driver='GTiff',
             height=out_H,
             width=out_W,
-            count=3, # 始终为 3 通道
+            count=3,
             dtype=ortho_image.dtype,
             crs=CRS.from_epsg(3857), # Web Mercator
             transform=transform
@@ -117,7 +109,7 @@ def create_checkerboard(ortho1: np.ndarray,
                         output_path: str, 
                         block_size: int = 50):
     """
-    (新) 将两个已对齐的正射影像合并为棋盘格。
+    Merge two aligned orthophotos into a checkerboard image.
     """
     if ortho1.shape != ortho2.shape:
         return
@@ -143,13 +135,13 @@ def create_checkerboard(ortho1: np.ndarray,
         else:
             checkerboard_img_bgr = checkerboard_img
 
-        success = cv2.imwrite(output_path, checkerboard_img_bgr)
+        cv2.imwrite(output_path, checkerboard_img_bgr)
     except Exception as e:
-        pass # [修改] auto 模式下减少打印
+        print(f"create_checkerboard failed: {e}")
 
 
 def load_imgs_bundle(args) -> List[RSImage]:
-    """加载所有影像 (包含完整的图像数据)。"""
+    """Load all images in the bundle."""
     base_path = os.path.join(args.root, 'adjust_images')
     img_folders = sorted([d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))])
     if args.select_imgs != '-1':
@@ -159,26 +151,26 @@ def load_imgs_bundle(args) -> List[RSImage]:
     img_folders = [img_folders[i] for i in select_img_idxs]
     
     images:List[RSImage] = []
-    if dist.get_rank() == 0 and not args.auto:
-        print(f"[Rank {dist.get_rank()}] Found {len(img_folders)} image folders. Loading all...")
+    if ddp.get_rank() == 0:
+        print(f"[Rank {ddp.get_rank()}] Found {len(img_folders)} image folders. Loading all...")
         
     for idx, folder in enumerate(img_folders):
         img_path = os.path.join(base_path, folder)
         try:
             images.append(RSImage(args, img_path, idx))
             images[-1].tie_points_height = images[0].tie_points_height
-            if dist.get_rank() == 0 and not args.auto:
-                print(f"[Rank {dist.get_rank()}] Loaded image {idx} from {folder}.")
+            if ddp.get_rank() == 0:
+                print(f"[Rank {ddp.get_rank()}] Loaded image {idx} from {folder}.")
         except Exception as e:
-            print(f"[Rank {dist.get_rank()}] Failed to load image {idx} from {folder}: {e}")
+            print(f"[Rank {ddp.get_rank()}] Failed to load image {idx} from {folder}: {e}")
     
 
-    if dist.get_rank() == 0 and not args.auto:
-        print(f"[Rank {dist.get_rank()}] Successfully loaded {len(images)} images into memory.")
+    if ddp.get_rank() == 0:
+        print(f"[Rank {ddp.get_rank()}] Successfully loaded {len(images)} images into memory.")
     return images
 
 def find_overlapping_pairs(args, images: List[RSImage]) -> List[Tuple[int, int]]:
-    """通过检查地理坐标BBox，找出所有重叠的影像对。"""
+    """Find overlapping image pairs by geographic bbox intersection."""
     bboxes = []
     for img in images:
         min_x = img.corner_xys[:, 0].min()
@@ -201,17 +193,14 @@ def find_overlapping_pairs(args, images: List[RSImage]) -> List[Tuple[int, int]]
             if not is_disjoint:
                 pairs.append((i, j))
     
-    if not args.auto:
-        print(f"Found {len(pairs)} overlapping pairs for validation.")
+    print(f"Found {len(pairs)} overlapping pairs for validation.")
     return pairs
 
 class TqdmLogger:
     """
-    [Refactored] 统一处理 TQDM (auto 模式) 和 Print (非 auto 模式) 的日志记录器。
-    仅在 Rank 0 上激活。
+    Unified logger (active only on rank 0).
     """
     def __init__(self, args, total_iters: int, level: int, local_rank: int):
-        self.is_auto = args.auto
         self.is_rank_0 = (local_rank == 0)
         self.total_iters = total_iters
         self.level = level
@@ -221,61 +210,28 @@ class TqdmLogger:
         if not self.is_rank_0:
             return
 
-        if self.is_auto:
-            self.pbar = tqdm(total=total_iters, 
-                             desc=f"Lvl:{level + 1}/{args.num_levels} Optim",
-                             unit="iter", 
-                             position=0, 
-                             leave=True,
-                             bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]' ,
-                             file=sys.stdout)
-        else:
-            self.start_time = time.time()
+        self.start_time = time.time()
             
     def update(self, iter: int, loss: float, metrics_dict: Dict, patience: int, max_patience: int):
         if not self.is_rank_0:
             return
-            
-        if self.is_auto:
-            postfix_data = {
-                "loss": f"{loss:.4f}",
-                "pat": f"{patience}/{max_patience}"
-            }
+
+        if (iter + 1) % 10 == 0:
+            elapsed_time_sec = time.time() - self.start_time
+            elapsed_time_str = format_time(elapsed_time_sec)
+            avg_iter_time = elapsed_time_sec / (iter + 1)
+            remaining_iter = self.total_iters - (iter + 1)
+            remaining_time_sec = avg_iter_time * remaining_iter
+            remaining_time_str = format_time(remaining_time_sec)
+
+            min_metric_log_str = ""
             if 'min_met' in metrics_dict:
-                postfix_data["min_met"] = metrics_dict['min_met']
-            if 'err(m)' in metrics_dict:
-                 postfix_data["err(m)"] = f"{metrics_dict['err(m)']:.2f}"
+                min_metric_log_str = f"min_met:{metrics_dict['min_met']}"
 
-            self.pbar.set_postfix(postfix_data)
-            self.pbar.update(1)
-            
-        else:
-            # 非 Auto 模式，按原逻辑每10次打印
-            if (iter + 1) % 10 == 0:
-                elapsed_time_sec = time.time() - self.start_time
-                elapsed_time_str = format_time(elapsed_time_sec)
-                avg_iter_time = elapsed_time_sec / (iter + 1)
-                remaining_iter = self.total_iters - (iter + 1)
-                remaining_time_sec = avg_iter_time * remaining_iter
-                remaining_time_str = format_time(remaining_time_sec)
+            lr_t_str = f"{metrics_dict.get('lr_t', 0):.2e}"
+            lr_r_str = f"{metrics_dict.get('lr_r', 0):.2e}"
 
-                # 准备 error 字符串
-                err_log_str = ""
-                if 'err(m)' in metrics_dict:
-                     err_log_str = f"\t mean_err:{metrics_dict['err(m)']:.4f}m"
-                
-                min_metric_log_str = ""
-                if 'min_met' in metrics_dict:
-                    min_metric_log_str = f"min_met:{metrics_dict['min_met']}"
-                
-                lr_t_str = f"{metrics_dict.get('lr_t', 0):.2e}"
-                lr_r_str = f"{metrics_dict.get('lr_r', 0):.2e}"
-
-                print(f"Lvl:{self.level + 1}/{self.num_levels} iter:{iter+1}/{self.total_iters} \t loss:{loss:.4f} {min_metric_log_str} {err_log_str} \t pat:{patience}/{max_patience} \t lr_t:{lr_t_str}  lr_r:{lr_r_str} \t elapsed:{elapsed_time_str}  eta:{remaining_time_str}")
+            print(f"Lvl:{self.level + 1}/{self.num_levels} iter:{iter+1}/{self.total_iters} \t loss:{loss:.4f} {min_metric_log_str} \t pat:{patience}/{max_patience} \t lr_t:{lr_t_str}  lr_r:{lr_r_str} \t elapsed:{elapsed_time_str}  eta:{remaining_time_str}")
 
     def close(self):
-        if not self.is_rank_0:
-            return
-            
-        if self.is_auto and self.pbar is not None:
-            self.pbar.close()
+        return

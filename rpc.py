@@ -109,7 +109,7 @@ class RPCModelParameterTorch:
         lon = torch.linspace(lon_min, lon_max, xy_sample).to(self.device,dtype=torch.double)
         hei = torch.linspace(hei_min, hei_max, z_sample).to(self.device,dtype=torch.double)
 
-        lat, lon, hei = torch.meshgrid(lat, lon, hei, indexing='ij') # 保持与旧版torch/numpy一致的行为
+        lat, lon, hei = torch.meshgrid(lat, lon, hei, indexing='ij') # torch/numpy
 
         lat = lat.reshape(-1)
         lon = lon.reshape(-1)
@@ -135,7 +135,7 @@ class RPCModelParameterTorch:
 
     def _solve_lstsq(self, ma, lv, x=None, k=1):
         """
-        【私有】最小二乘解算器
+        【】
         :param lv:
         :param ma: the Normal matrix
         :param x: init value
@@ -182,7 +182,7 @@ class RPCModelParameterTorch:
         lon = lon.reshape(-1)
         hei = hei.reshape(-1)
 
-        # 归一化
+        # 
         samp = samp - self.SAMP_OFF
         samp = samp / self.SAMP_SCALE
         line = line - self.LINE_OFF
@@ -211,7 +211,7 @@ class RPCModelParameterTorch:
 
         ATl = torch.matmul(A.T, l)
 
-        # 使用重构后的类方法
+        # 
         x, times = self._solve_lstsq(ATA, ATl)
 
         self.LATNUM = x[0:20]
@@ -239,7 +239,7 @@ class RPCModelParameterTorch:
             t_new = -(R_inv @ t) 
             self.adjust_params_inv = torch.cat([R_inv, t_new.unsqueeze(1)], dim=1).to(torch.double)
         except torch.linalg.LinAlgError:
-            print("警告: 仿射矩阵R不可逆。使用伪逆。")
+            print(": R。。")
             R_inv = torch.linalg.pinv(R)
             t_new = -(R_inv @ t)
             self.adjust_params_inv = torch.cat([R_inv, t_new.unsqueeze(1)], dim=1).to(torch.double)
@@ -258,17 +258,17 @@ class RPCModelParameterTorch:
             device = A.device
             dtype = A.dtype
 
-            # 创建用于扩展的行
+            # 
             bottom_row = torch.tensor([[0.0, 0.0, 1.0]], dtype=dtype, device=device)
 
-            # 扩展到齐次坐标
+            # 
             A_h = torch.cat([A, bottom_row], dim=0)
             B_h = torch.cat([B, bottom_row], dim=0)
 
-            # 矩阵乘法，注意顺序 B @ A
+            # ， B @ A
             C_h = B_h @ A_h
 
-            # 返回 (2, 3) 形式
+            #  (2, 3) 
             return C_h[:2, :]
         self.adjust_params = merge_adjust(self.adjust_params,new_adjust_params).to(self.adjust_params.device).to(torch.double)
         self.Inverse_Adjust()
@@ -278,8 +278,8 @@ class RPCModelParameterTorch:
         offset_line = self.raw_adjust_params[0] + self.raw_adjust_params[1] * corners[:,1] + self.raw_adjust_params[2] * corners[:,0]
         offset_samp = self.raw_adjust_params[3] + self.raw_adjust_params[4] * corners[:,1] + self.raw_adjust_params[5] * corners[:,0]
         
-        # 注意：这里的 offset_corners 计算逻辑是 (原始 - 偏移)
-        # 这意味着 af_trans 是 (调整后 -> 原始) 的变换
+        # ： offset_corners  ( - )
+        #  af_trans  ( -> ) 
         offset_corners = corners - np.stack([offset_line,offset_samp],axis=1) 
         
         af_trans = cv2.getAffineTransform(corners,offset_corners)
@@ -287,13 +287,13 @@ class RPCModelParameterTorch:
 
     def Merge_Adjust(self):
         """
-        将当前的仿射变换参数 self.adjust_params "烘焙"（Bake）到
-        RPC的主系数（LNUM, LDEM, SNUM, SDEM）中。
-        这将导致正向和反向系数被重新计算，
-        然后 adjust_params 将被重置为单位矩阵。
+         self.adjust_params ""（Bake）
+        RPC（LNUM, LDEM, SNUM, SDEM）。
+        ，
+         adjust_params 。
         """
         
-        # 1. 检查是否需要合并
+        # 1. 
         identity_adjust = torch.tensor([
             [1.,0.,0.],
             [0.,1.,0.]
@@ -303,39 +303,39 @@ class RPCModelParameterTorch:
             return
 
 
-        # 2. 生成 3D 虚拟格网 (物方)
-        #    Create_Virtual_3D_Grid 内部会调用 RPC_OBJ2PHOTO
-        #    RPC_OBJ2PHOTO 内部会 *自动应用* 当前的 self.adjust_params_inv
-        #    因此，grid_obj 包含的就是我们需要的 (line_final, samp_final) 真值
-        grid_obj = self.Create_Virtual_3D_Grid(xy_sample=50, z_sample=30) # 使用更密集的格网保证拟合精度
+        # 2.  3D  ()
+        #    Create_Virtual_3D_Grid  RPC_OBJ2PHOTO
+        #    RPC_OBJ2PHOTO  **  self.adjust_params_inv
+        #    ，grid_obj  (line_final, samp_final) 
+        grid_obj = self.Create_Virtual_3D_Grid(xy_sample=50, z_sample=30) # 
 
         if grid_obj.shape[0] == 0:
             return
 
-        # 3. 提取坐标
+        # 3. 
         samp_target = grid_obj[:, 0]
         line_target = grid_obj[:, 1]
         lat = grid_obj[:, 2]
         lon = grid_obj[:, 3]
         hei = grid_obj[:, 4]
 
-        # 4. 归一化坐标
-        # 物方坐标归一化 (作为多项式输入)
+        # 4. 
+        #  ()
         P = (lat - self.LAT_OFF) / self.LAT_SCALE
         L = (lon - self.LONG_OFF) / self.LONG_SCALE
         H = (hei - self.HEIGHT_OFF) / self.HEIGHT_SCALE
         
-        # 像方坐标归一化 (作为最小二乘的目标)
-        # 我们重用 *旧* 的 offset/scale 来归一化，
-        # 使得新系数的数值范围与旧系数保持一致，提高稳定性。
+        #  ()
+        #  **  offset/scale ，
+        # ，。
         line_target_norm = (line_target - self.LINE_OFF) / self.LINE_SCALE
         samp_target_norm = (samp_target - self.SAMP_OFF) / self.SAMP_SCALE
 
-        # 5. 构建最小二乘系统 (求解新的正向系数)
+        # 5.  ()
         coef = self.RPC_PLH_COEF(P, L, H)
         n_num = coef.shape[0]
         
-        # 求解 LNUM_new 和 LDEM_new[1:] (共39个未知数)
+        #  LNUM_new  LDEM_new[1:] (39)
         # A_L * x_L = l_L
         # [coef, -line_norm * coef[:, 1:]] * [LNUM_new, LDEM_new[1:]] = line_norm * (LDEM_new[0]=1)
         A_L = torch.zeros((n_num, 39), dtype=torch.double, device=self.device)
@@ -346,7 +346,7 @@ class RPCModelParameterTorch:
         ATA_L = A_L.T @ A_L
         ATl_L = A_L.T @ l_L
         
-        # 求解 SNUM_new 和 SDEM_new[1:] (共39个未知数)
+        #  SNUM_new  SDEM_new[1:] (39)
         # A_S * x_S = l_S
         A_S = torch.zeros((n_num, 39), dtype=torch.double, device=self.device)
         A_S[:, 0:20] = coef
@@ -356,11 +356,11 @@ class RPCModelParameterTorch:
         ATA_S = A_S.T @ A_S
         ATl_S = A_S.T @ l_S
 
-        # 6. 解算
+        # 6. 
         x_L, _ = self._solve_lstsq(ATA_L, ATl_L)
         x_S, _ = self._solve_lstsq(ATA_S, ATl_S)
 
-        # 7. 更新 正向 RPC 系数
+        # 7.   RPC 
         self.LNUM = x_L[0:20].clone()
         self.LDEM[0] = 1.0
         self.LDEM[1:20] = x_L[20:39].clone()
@@ -368,14 +368,14 @@ class RPCModelParameterTorch:
         self.SDEM[0] = 1.0
         self.SDEM[1:20] = x_S[20:39].clone()
 
-        # 8. 重置 adjust_params
-        #    必须在 Calculate_Inverse_RPC 之前调用！
-        #    因为 Calculate_Inverse_RPC 会调用 Create_Virtual_3D_Grid，
-        #    那时必须使用新的正向模型 和 *零* 仿射变换。
+        # 8.  adjust_params
+        #     Calculate_Inverse_RPC ！
+        #     Calculate_Inverse_RPC  Create_Virtual_3D_Grid，
+        #      ** 。
         self.Clear_Adjust()
 
-        # 9. 重新计算 反向 RPC 系数
-        #    (因为正向模型已经改变，反向模型必须重新拟合)
+        # 9.   RPC 
+        #    (，)
         times = self.Calculate_Inverse_RPC()
 
     def RPC_PLH_COEF(self, P, L, H):
@@ -420,7 +420,7 @@ class RPCModelParameterTorch:
         lon = self.convert_tensor(inlon,self.device)
         hei = self.convert_tensor(inhei,self.device)
         
-        # 确保输入是1D
+        # 1D
         is_batched = lat.dim() > 0
         if not is_batched:
             lat = lat.unsqueeze(0)
@@ -465,7 +465,7 @@ class RPCModelParameterTorch:
         samp = self.convert_tensor(insamp,self.device)
         line = self.convert_tensor(inline,self.device)
  
-        # 确保输入是1D
+        # 1D
         is_batched = samp.dim() > 0
         if not is_batched:
             samp = samp.unsqueeze(0)
@@ -570,35 +570,21 @@ class RPCModelParameterTorch:
 
         return x,y
     
-    def _project_xyh_to_linesamp_for_jacobian(self, xyh_tensor: torch.Tensor) -> torch.Tensor:
-        """
-        A helper function that takes a single (N, 3) tensor for xyh
-        and returns a (N, 2) tensor for line/samp.
-        This format is required by torch.autograd.functional.jacobian.
-        """
-        x, y, h = xyh_tensor[..., 0], xyh_tensor[..., 1], xyh_tensor[..., 2]
-        
-        # Chain the transformations
-        latlon = self.yx2latlon(torch.stack([y, x], dim=-1))
-        samp, line = self.RPC_OBJ2PHOTO(latlon[:, 0], latlon[:, 1], h)
-        
-        return torch.stack([line, samp], dim=-1)
-
     def _vjp_projection_core(self, mu_xyh: torch.Tensor, sigma_xyh: torch.Tensor):
         """
-        【私有核心函数】执行VJP投影计算。
-        假定输入的张量块能完全载入显存。
+        【】VJP。
+        。
         """
-        # 确保 mu_xyh 可以追踪梯度，这是 autograd.grad 的要求
+        #  mu_xyh ， autograd.grad 
         mu_xyh.requires_grad_(True)
         if mu_xyh.grad is not None:
             mu_xyh.grad.zero_()
 
-        # --- 均值传播 ---
+        # ---  ---
         line, samp = self.RPC_XY2LINESAMP(mu_xyh[:, 0], mu_xyh[:, 1], mu_xyh[:, 2])
         mu_linesamp = torch.stack([line, samp], dim=-1)
 
-        # --- 方差传播 (VJP方法) ---
+        # ---  (VJP) ---
         grad_line, = torch.autograd.grad(
             outputs=line, inputs=mu_xyh,
             grad_outputs=torch.ones_like(line),
@@ -607,7 +593,7 @@ class RPCModelParameterTorch:
         grad_samp, = torch.autograd.grad(
             outputs=samp, inputs=mu_xyh,
             grad_outputs=torch.ones_like(samp),
-            create_graph=False, retain_graph=False, # 最后一次调用可以关闭图保留
+            create_graph=False, retain_graph=False, # 
         )
         
         var_xyh = sigma_xyh.pow(2)
@@ -691,7 +677,7 @@ class RPCModelParameterTorch:
         :param filepath: where to store the file
         :return:
         """
-        # 确保所有参数都在CPU上以便转换为 .item()
+        # CPU .item()
         original_device = self.device
         if self.device.type != 'cpu':
             self.to_gpu('cpu')
@@ -775,15 +761,15 @@ class RPCModelParameterTorch:
         for i in range(150, 170):
             text += addition0[i] + " " + str(self.LONDEM[i - 150].item()) + "\n"
         
-        # 重要：保存时不再写出 RFM 块，因为它们已经被合并了。
-        # (或者，如果需要，可以写出一个全为0的 RFM 块)
-        # 这里选择不写出。
+        # ： RFM ，。
+        # (，，0 RFM )
+        # 。
 
         f = open(filepath, "w")
         f.write(text)
         f.close()
         
-        # 恢复设备
+        # 
         if original_device.type != 'cpu':
             self.to_gpu(original_device)
 
