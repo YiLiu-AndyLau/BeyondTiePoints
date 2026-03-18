@@ -453,7 +453,7 @@ def pretrain(args):
             dist.all_reduce(loss_status_tensor, op=dist.ReduceOp.SUM)
 
             if loss_status_tensor.item() > 0:
-                pprint(f"--- 检测到 NaN！Epoch {epoch}, iter {iter_idx+1}, dataset {dataset_idx}. 所有进程将一起跳过此次更新。---")
+                pprint(f"---  NaN！Epoch {epoch}, iter {iter_idx+1}, dataset {dataset_idx}. 。---")
                 del loss,loss_obj,loss_height,loss_conf,loss_feat,loss_dis,conf_mean
                 adapter_scheduler.step()
                 # backbone_scheduler.step()

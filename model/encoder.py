@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from typing import List
 
 class PositionalEncoding(nn.Module):
-    """二维正弦位置编码，为特征图注入空间位置信息"""
+    """，"""
     def __init__(self, dim: int, max_shape: tuple = (256, 256)):
         super().__init__()
         self.dim = dim
@@ -26,16 +26,16 @@ class PositionalEncoding(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            x (torch.Tensor): (B, D, H, W) 的输入特征图
+            x (torch.Tensor): (B, D, H, W) 
         Returns:
-            torch.Tensor: 添加了位置编码的特征图
+            torch.Tensor: 
         """
         return x + self.pe[:, :, :x.size(2), :x.size(3)]
 
 
-# --- 核心模块 1: 增强型Encoder ---
+# ---  1: Encoder ---
 class AttentionBlock(nn.Module):
-    """一个通用的注意力模块，可用于自注意力或交叉注意力"""
+    """，"""
     def __init__(self, dim: int, num_heads: int = 8):
         super().__init__()
         assert dim % num_heads == 0, "dim must be divisible by num_heads"
@@ -55,7 +55,7 @@ class AttentionBlock(nn.Module):
         """
         B, N, D = query.shape
         
-        # 线性投影并切分为多头
+        # 
         q = self.q_proj(query).view(B, N, self.num_heads, self.head_dim).transpose(1, 2)
         k = self.k_proj(key).view(B, N, self.num_heads, self.head_dim).transpose(1, 2)
         v = self.v_proj(value).view(B, N, self.num_heads, self.head_dim).transpose(1, 2)
@@ -64,10 +64,10 @@ class AttentionBlock(nn.Module):
         attn_scores = (q @ k.transpose(-2, -1)) * self.scale
         attn = F.softmax(attn_scores, dim=-1)
 
-        # 加权求和
+        # 
         x = (attn @ v).transpose(1, 2).reshape(B, N, D)
         
-        # 输出线性投影
+        # 
         return self.out_proj(x)
 
 class Adapter(nn.Module):

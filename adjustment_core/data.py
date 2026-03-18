@@ -10,7 +10,7 @@ from rpc import RPCModelParameterTorch
 from model.encoder import EncoderDino
 from utils import vis_conf, downsample_average
 
-import torch.distributed as dist
+import adjustment_core.ddp as ddp
 
 from adjustment_core.loop import warp_local, feature_sampling
 
@@ -37,12 +37,7 @@ class Window():
 class SharedGrid():
     def __init__(self, args, diag: np.ndarray, all_rs_images: List[RSImage], grid_id: str):
         """
-        (新) 代表一个公共地理格网，管理所有在此重叠的影像数据。
-
-        args: 命令行参数
-        diag: 格网的地理坐标对角线 (2, 2)
-        all_rs_images: 工程中 *所有* RSImage 对象的列表
-        grid_id: 该格网的全局唯一ID (用于调试)
+        A shared geographic grid that stores all overlapping image windows.
         """
         self.args = args
         self.diag = diag
@@ -81,7 +76,7 @@ class SharedGrid():
         if len(self.overlapping_image_ids) < 2:
             raise ValueError(f"Grid {self.id} has {len(self.overlapping_image_ids)} overlapping images. Need at least 2.")
         
-        if dist.get_rank() == 0 and not args.auto:
+        if ddp.get_rank() == 0:
             self.debug_output_path = os.path.join(args.debug_output_path, f'grid_{self.id}')
             os.makedirs(self.debug_output_path, exist_ok=True)
             for img_id in self.overlapping_image_ids:
@@ -91,8 +86,7 @@ class SharedGrid():
     @torch.no_grad()
     def extract_features_sequentially(self, encoder: EncoderDino, local_rank: int):
         """
-        依次提取此格网中所有影像的特征。
-        [Refactored] encoder 现在作为参数传入，且假定已在
+        Extract features for all overlapping images in this grid.
         """
         encoder_eval = encoder.eval() 
         
@@ -101,7 +95,7 @@ class SharedGrid():
                     transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)) 
                     ])
         
-        if dist.get_rank() == 0 and not self.args.auto:
+        if ddp.get_rank() == 0:
             os.makedirs(self.debug_output_path, exist_ok=True)
         
         for img_id in self.overlapping_image_ids:
@@ -116,14 +110,14 @@ class SharedGrid():
             window.local = downsample_average(window.local, encoder.SAMPLE_FACTOR).flatten(0,1)
             window.dem = downsample_average(window.dem, encoder.SAMPLE_FACTOR).flatten(0,1)
 
-            if dist.get_rank() == 0 and not self.args.auto:
+            if ddp.get_rank() == 0:
                 original_img_for_vis = window.img.copy()
             
             del window.img
 
             window.to_gpu() 
 
-            if dist.get_rank() == 0 and not self.args.auto:
+            if ddp.get_rank() == 0:
                 feat_vis = window.feature.cpu().numpy().reshape(h,w,-1)
                 conf_vis = window.conf.cpu().numpy().reshape(h,w)
                 
@@ -138,10 +132,9 @@ class SharedGrid():
 
     def calculate_all_pairs_loss(self, model_ddp, images: List[RSImage], local_rank: int) -> torch.Tensor:
         """
-         (已修改) 计算此格网内所有影像两两之间的 *非对称* 损失 (j -> i, j > i)。
-         [Refactored] 依赖外部导入的 warp_local 和 feature_sampling
+         Compute pairwise asymmetric losses for all image pairs in this grid.
         """
-        import itertools # 确保导入
+        import itertools
         
         grid_total_loss = torch.tensor(0.0, device=local_rank)
         num_valid_pairs_in_grid = 0

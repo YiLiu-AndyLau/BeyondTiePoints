@@ -29,20 +29,20 @@ def get_current_time():
     return datetime.now().strftime("%Y%m%d%H%M%S")
 def crop_rect_from_image(image, rect_points, size):
     """
-    从图像中截取矩形区域。
+    。
 
-    参数:
-    - image: 使用cv2.imread()读取的图像。
-    - rect_points: 矩形的四个顶点坐标，按顺时针或逆时针顺序排列。
-                  例如: [(x1, y1), (x2, y2), (x3, y3), (x4, y4)]
+    :
+    - image: cv2.imread()。
+    - rect_points: ，。
+                  : [(x1, y1), (x2, y2), (x3, y3), (x4, y4)]
 
-    返回:
-    - cropped_image: 截取出的矩形图像。
+    :
+    - cropped_image: 。
     """
-    # 将四个顶点转换为numpy数组
+    # numpy
     rect = np.array(rect_points, dtype="float32")
 
-    # 计算矩形的边界框的宽度和高度
+    # 
     width_a = np.linalg.norm(rect[0] - rect[1])
     width_b = np.linalg.norm(rect[2] - rect[3])
     max_width = int(max(width_a, width_b))
@@ -51,17 +51,17 @@ def crop_rect_from_image(image, rect_points, size):
     height_b = np.linalg.norm(rect[1] - rect[2])
     max_height = int(max(height_a, height_b))
 
-    # 目标矩形的四个角的坐标（仿射变换后的坐标）
+    # （）
     dst = np.array([[0, 0], [0, max_width-1], [max_height-1, max_width-1], [max_height-1, 0]], dtype="float32")
 
     rect_xy = np.array([[p[1],p[0]] for p in rect], dtype="float32")
     dst_xy = np.array([[p[1],p[0]]for p in dst], dtype="float32")
 
-    # 计算仿射变换矩阵
+    # 
     M = cv2.getPerspectiveTransform(rect_xy, dst_xy)
     M_inv = cv2.getPerspectiveTransform(dst, rect)
 
-    # 使用仿射变换将图像中的矩形区域转换为目标矩形区域
+    # 
     warped = cv2.warpPerspective(image.astype(np.float32), M, (max_width, max_height))
 
     if warped.shape[0] < size or warped.shape[1] < size:
@@ -73,7 +73,7 @@ def random_square_cut_and_affine(images, square_size, angle = None, margin = Non
     H, W = images[0].shape[:2]
     
     if angle is None:
-        angle = np.random.uniform(-5,5)  # 随机旋转角度
+        angle = np.random.uniform(-5,5)  # 
     theta = np.deg2rad(angle)
     if margin is None:
         margin = int((np.abs(np.sin(theta)) + np.abs(np.cos(theta)))*square_size / 2) + 1
@@ -103,28 +103,28 @@ def estimate_affine_ransac(A, B, iterations=1000, threshold=0.1, whole=False, hp
     best_affine_matrix = None
 
     def estimate_affine_transformation(A, B):
-        # 中心化点集
+        # 
         A_centered = A - np.mean(A, axis=0)
         B_centered = B - np.mean(B, axis=0)
 
-        # 计算协方差矩阵
+        # 
         H = A_centered.T @ B_centered
 
-        # 进行奇异值分解
+        # 
         U, S, Vt = np.linalg.svd(H)
 
-        # 计算旋转矩阵
+        # 
         R = Vt.T @ U.T
 
-        # 确保旋转矩阵的行列式为1
+        # 1
         if np.linalg.det(R) < 0:
             Vt[1, :] *= -1
             R = Vt.T @ U.T
 
-        # 计算平移
+        # 
         t = np.mean(B, axis=0) - R @ np.mean(A, axis=0)
 
-        # 组合成仿射变换矩阵
+        # 
         affine_matrix = np.eye(3)
         affine_matrix[:2, :2] = R
         affine_matrix[:2, 2] = t
@@ -132,28 +132,28 @@ def estimate_affine_ransac(A, B, iterations=1000, threshold=0.1, whole=False, hp
         return affine_matrix
 
     for _ in range(iterations):
-        # 随机选择三个点
+        # 
         sample_indices = random.sample(range(len(A)), hp_num)
         A_sample = A[sample_indices]
         B_sample = B[sample_indices]
 
-        # 计算仿射变换矩阵
+        # 
         affine_matrix = estimate_affine_transformation(A_sample, B_sample)
 
-        # 计算在当前变换下的预测值
+        # 
         B_pred = (affine_matrix[:2, :2] @ A.T).T + affine_matrix[:2, 2]
 
-        # 计算内点
+        # 
         distances = np.linalg.norm(B - B_pred, axis=1)
         inliers = distances < threshold
 
-        # 更新最佳内点集
+        # 
         if np.sum(inliers) > max_inliers_num:
             max_inliers_num = np.sum(inliers)
             if whole:
                 whole_matrix = estimate_affine_transformation(A[inliers],B[inliers])
                 B_pred = (whole_matrix[:2, :2] @ A.T).T + whole_matrix[:2, 2]
-                # 计算内点
+                # 
                 distances = np.linalg.norm(B - B_pred, axis=1)
                 inliers = distances < threshold
                 if np.sum(inliers) > max_inliers_num:
@@ -176,21 +176,21 @@ def estimate_affine_ransac(A, B, iterations=1000, threshold=0.1, whole=False, hp
 #     return model_robust.params[:2,:], len(inliers[inliers]) 
 
 def calculate_errors(T_true, T_pred):
-    # 提取旋转部分 (前2x2矩阵) 和 平移部分 (最后一列)
+    #  (2x2)   ()
     R_true = T_true[:, :2]
     R_pred = T_pred[:, :2]
     
     t_true = T_true[:, 2]
     t_pred = T_pred[:, 2]
     
-    # 计算平移误差（欧氏距离）
+    # （）
     translation_error = np.linalg.norm(t_pred - t_true)
     
-    # 计算旋转角度
+    # 
     theta_true = np.arctan2(R_true[1, 0], R_true[0, 0])
     theta_pred = np.arctan2(R_pred[1, 0], R_pred[0, 0])
     
-    # 计算旋转误差（角度差异）
+    # （）
     rotation_error = np.degrees(np.abs(theta_pred - theta_true))
     
     return rotation_error, translation_error
@@ -219,10 +219,10 @@ class TableLogger():
 
 def average_downsample_matrix(matrix:np.ndarray, n):
     """
-    对给定的numpy矩阵进行n倍平均下采样
-    :param matrix: 输入的numpy矩阵
-    :param n: 下采样倍数
-    :return: 下采样后的矩阵
+    numpyn
+    :param matrix: numpy
+    :param n: 
+    :return: 
     """
     rows, cols = matrix.shape[:2]
     new_rows = rows // n
@@ -245,39 +245,39 @@ def get_coord_mat(H,W,downsample:int = 0):
     return coord_array
 
 def find_grids(quadrilaterals, side_length, offset_x=0.0, offset_y=0., grid_num = -1):
-    # 检查输入是否有效
+    # 
     if not isinstance(quadrilaterals, np.ndarray) or quadrilaterals.ndim != 3 or quadrilaterals.shape[1:] != (4, 2):
-        raise ValueError("输入'quadrilaterals'必须是形状为 (N, 4, 2) 的Numpy数组。")
+        raise ValueError("'quadrilaterals' (N, 4, 2) Numpy。")
     if not isinstance(side_length, (int, float)) or side_length <= 0:
-        raise ValueError("输入'side_length'必须是一个正数。")
+        raise ValueError("'side_length'。")
     if quadrilaterals.shape[0] == 0:
         return np.empty((0, 2, 2)), None
 
     def _order_points_for_polygon(points):
-        # 1. 计算质心
+        # 1. 
         centroid = np.mean(points, axis=0)
         
-        # 2. 计算每个点相对于质心的角度
+        # 2. 
         angles = [math.atan2(p[1] - centroid[1], p[0] - centroid[0]) for p in points]
         
-        # 3. 根据角度对点进行排序
+        # 3. 
         sorted_points = sorted(zip(points, angles), key=lambda item: item[1])
         
-        # 返回排序后的点坐标
+        # 
         return np.array([p for p, a in sorted_points])
 
-    # --- 步骤 1: 将Numpy数组转换为Shapely多边形对象列表 ---
+    # ---  1: NumpyShapely ---
     try:
-        # 已修改：在创建多边形前，先对其顶点进行排序，确保多边形有效。
-        # .buffer(0) 仍然保留，作为处理其他潜在无效情况的最后防线。
+        # ：，，。
+        # .buffer(0) ，。
         polygons = [Polygon(_order_points_for_polygon(q)).buffer(0) for q in quadrilaterals]
         polygons = [p for p in polygons if not p.is_empty]
         if not polygons:
              return np.empty((0, 2, 2)), None
     except Exception as e:
-        raise ValueError(f"无法根据输入坐标创建多边形: {e}")
+        raise ValueError(f": {e}")
 
-    # --- 步骤 2: 计算所有多边形的交集 ---
+    # ---  2:  ---
     intersection_area = polygons[0]
     for i in range(1, len(polygons)):
         intersection_area = intersection_area.intersection(polygons[i])
@@ -287,7 +287,7 @@ def find_grids(quadrilaterals, side_length, offset_x=0.0, offset_y=0., grid_num 
     if intersection_area.is_empty:
         return np.empty((0, 2, 2)), intersection_area
 
-    # --- 步骤 3 & 4: 在交集的边界框内进行网格迭代 ---
+    # ---  3 & 4:  ---
     found_squares_coords = []
     minx, miny, maxx, maxy = intersection_area.bounds
 
@@ -295,7 +295,7 @@ def find_grids(quadrilaterals, side_length, offset_x=0.0, offset_y=0., grid_num 
     while x + side_length <= maxx:
         y = miny
         while y + side_length <= maxy:
-            # --- 步骤 5: 创建候选正方形并检查是否被完全包含 ---
+            # ---  5:  ---
             square_poly = Polygon([
                 (x, y),
                 (x + side_length, y),
@@ -304,7 +304,7 @@ def find_grids(quadrilaterals, side_length, offset_x=0.0, offset_y=0., grid_num 
             ])
 
             if intersection_area.contains(square_poly):
-                # 找到了一个有效的正方形。记录其左上角和右下角坐标，并应用偏移
+                # 。，
                 top_left_offset = [x + offset_x, y + side_length + offset_y]
                 bottom_right_offset = [x + side_length + offset_x, y + offset_y]
                 found_squares_coords.append([top_left_offset, bottom_right_offset])
@@ -387,33 +387,33 @@ def proj2photo(proj_coord:torch.Tensor,dem:torch.Tensor,rpc:RPCModelParameterTor
 
 def bilinear_interpolate(array, points, use_cuda=False,device = None):
     """
-    在矩阵上进行双线性插值采样，可选择在 CPU (NumPy) 或 GPU (PyTorch) 上运行。
+    ， CPU (NumPy)  GPU (PyTorch) 。
 
-    输入:
-    - array: 二维 (H, W) 或三维 (H, W, C) 的 numpy 数组或 torch 张量。
-    - points: (N, 2) 的浮点坐标数组或张量，每行表示一个坐标 [x, y]。
-    - use_cuda:布尔值。如果为 True，则尝试使用 GPU (CUDA) 加速。
+    :
+    - array:  (H, W)  (H, W, C)  numpy  torch 。
+    - points: (N, 2) ， [x, y]。
+    - use_cuda:。 True， GPU (CUDA) 。
 
-    输出:
-    - 插值结果，形状为 (N,) 或 (N, C) 的 numpy 数组。
+    :
+    - ， (N,)  (N, C)  numpy 。
     """
     if device is None:
         device = 'cuda'
-    # ----------- GPU (CUDA) 加速路径 -----------
+    # ----------- GPU (CUDA)  -----------
     if use_cuda:
-        # 检查 CUDA 是否可用，如果不可用则警告并回退到 CPU
+        #  CUDA ， CPU
         if not torch.cuda.is_available():
-            print("警告：CUDA 不可用。将回退到 CPU (NumPy) 执行。")
+            print("：CUDA 。 CPU (NumPy) 。")
             use_cuda = False
         else:
             device = torch.device(device)
             
-            # 确保输入是 PyTorch 张量并移至 GPU
-            # 使用 torch.as_tensor 避免不必要的数据拷贝
+            #  PyTorch  GPU
+            #  torch.as_tensor 
             arr_tensor = torch.as_tensor(array, dtype=torch.float32, device=device)
             pts_tensor = torch.as_tensor(points, dtype=torch.float32, device=device)
             
-            # 将二维数组扩展为 (H, W, 1) 以统一处理
+            #  (H, W, 1) 
             if arr_tensor.dim() == 2:
                 arr_tensor = arr_tensor.unsqueeze(-1)
             
@@ -421,25 +421,25 @@ def bilinear_interpolate(array, points, use_cuda=False,device = None):
             x = pts_tensor[:, 0]
             y = pts_tensor[:, 1]
             
-            # 计算整数坐标并约束边界
-            # torch.floor 的结果是浮点数，需要转为长整型用于索引
+            # 
+            # torch.floor ，
             x0 = torch.floor(x).long()
             y0 = torch.floor(y).long()
             
-            # 使用 torch.clamp 约束边界，等同于 np.clip
+            #  torch.clamp ， np.clip
             x1 = torch.clamp(x0 + 1, 0, W - 1)
             x0 = torch.clamp(x0, 0, W - 1)
             y1 = torch.clamp(y0 + 1, 0, H - 1)
             y0 = torch.clamp(y0, 0, H - 1)
             
-            # 提取四个角点的值，形状 (N, C)
-            # PyTorch 的高级索引方式与 NumPy 相同
+            # ， (N, C)
+            # PyTorch  NumPy 
             Ia = arr_tensor[y0, x0, :]
             Ib = arr_tensor[y1, x0, :]
             Ic = arr_tensor[y0, x1, :]
             Id = arr_tensor[y1, x1, :]
             
-            # 计算权重 (dx, dy 仍然是浮点数)
+            #  (dx, dy )
             dx = x - x0.float()
             dy = y - y0.float()
             
@@ -448,8 +448,8 @@ def bilinear_interpolate(array, points, use_cuda=False,device = None):
             wc = dx * (1 - dy)
             wd = dx * dy
             
-            # 加权求和 (使用 unsqueeze(1) 广播到所有通道)
-            # wa[:, None] 在 PyTorch 中是 wa.unsqueeze(1)
+            #  ( unsqueeze(1) )
+            # wa[:, None]  PyTorch  wa.unsqueeze(1)
             result_tensor = (
                 wa.unsqueeze(1) * Ia +
                 wb.unsqueeze(1) * Ib +
@@ -457,19 +457,19 @@ def bilinear_interpolate(array, points, use_cuda=False,device = None):
                 wd.unsqueeze(1) * Id
             )
             
-            # 压缩多余的维度
+            # 
             if arr_tensor.shape[-1] == 1 and arr_tensor.dim() == 3:
                 result_tensor = result_tensor.squeeze(axis=1)
                 
-            # 将结果从 GPU 移回 CPU 并转换为 NumPy 数组
+            #  GPU  CPU  NumPy 
             return result_tensor.cpu().numpy()
 
-    # ----------- CPU (NumPy) 原始路径 -----------
-    # 如果 use_cuda 为 False，则执行原始逻辑
+    # ----------- CPU (NumPy)  -----------
+    #  use_cuda  False，
     array = np.asarray(array)
     points = np.asarray(points)
     
-    # 记录原始维度以决定最终输出形状
+    # 
     original_ndim = array.ndim
     
     if array.ndim == 2:
@@ -518,76 +518,76 @@ def downsample_average(
     device = 'cuda'
 ) -> torch.Tensor:
     """
-    使用滑动窗口平均值对图像张量进行下采样。
+    。
 
-    该函数接受一个形状为 (H, W) 或 (H, W, C) 的 PyTorch 图像张量，
-    并使用一个 (downsample_factor x downsample_factor) 的窗口
-    以 downsample_factor 为步长进行不重叠的滑动窗口下采样，
-    并取窗口内的像素平均值。
+     (H, W)  (H, W, C)  PyTorch ，
+     (downsample_factor x downsample_factor) 
+     downsample_factor ，
+    。
 
     Args:
-        input_tensor (torch.Tensor): 输入的图像张量，形状可以是 (H, W) [灰度图]
-                                     或 (H, W, C) [彩色图]。
-        downsample_factor (int): 下采样因子，将作为窗口大小和步长。例如，8 表示
-                                 使用 8x8 的窗口下采样8倍。
-        use_cuda (bool, optional): 如果为 True，则尝试使用 CUDA GPU 进行加速。
-                                   如果 CUDA 不可用，将打印警告并回退到 CPU。
-                                   默认为 False。
+        input_tensor (torch.Tensor): ， (H, W) []
+                                      (H, W, C) []。
+        downsample_factor (int): ，。，8 
+                                  8x8 8。
+        use_cuda (bool, optional):  True， CUDA GPU 。
+                                    CUDA ， CPU。
+                                    False。
 
     Returns:
-        torch.Tensor: 经过下采样后的图像张量。
-                      如果输入是 (H, W)，输出是 (H/factor, W/factor)。
-                      如果输入是 (H, W, C)，输出是 (H/factor, W/factor, C)。
-                      输出张量将位于计算所用的设备上（CPU 或 CUDA）。
+        torch.Tensor: 。
+                       (H, W)， (H/factor, W/factor)。
+                       (H, W, C)， (H/factor, W/factor, C)。
+                      （CPU  CUDA）。
 
     Raises:
-        ValueError: 如果输入张量的维度不是 2 或 3。
-        TypeError: 如果输入不是一个 torch.Tensor。
+        ValueError:  2  3。
+        TypeError:  torch.Tensor。
     """
     if not isinstance(input_tensor, torch.Tensor):
-        raise TypeError(f"输入必须是 torch.Tensor，但得到的是 {type(input_tensor)}")
+        raise TypeError(f" torch.Tensor， {type(input_tensor)}")
 
-    # --- 1. 检查和设置计算设备 (CPU or CUDA) ---
+    # --- 1.  (CPU or CUDA) ---
     if use_cuda:
         if torch.cuda.is_available():
             device = torch.device(device)
             # print("CUDA is available. Using GPU for acceleration.")
         else:
             device = torch.device('cpu')
-            print("警告: 请求使用 CUDA，但 CUDA 不可用。将回退到 CPU。")
+            print(":  CUDA， CUDA 。 CPU。")
     else:
         device = torch.device('cpu')
 
-    # 将输入张量移动到目标设备
+    # 
     input_tensor = input_tensor.to(device)
 
-    # --- 2. 预处理：将输入张量调整为 PyTorch 卷积层期望的格式 (N, C, H, W) ---
-    # PyTorch 的 2D 卷积/池化层需要一个4D张量作为输入：(批量大小, 通道数, 高, 宽)
+    # --- 2. ： PyTorch  (N, C, H, W) ---
+    # PyTorch  2D /4D：(, , , )
     input_dim = input_tensor.dim()
-    if input_dim == 2:  # 灰度图 (H, W)
+    if input_dim == 2:  #  (H, W)
         is_grayscale = True
-        # 扩展为 (1, 1, H, W)
+        #  (1, 1, H, W)
         tensor_in = input_tensor.unsqueeze(0).unsqueeze(0)
-    elif input_dim == 3:  # 彩色图 (H, W, C)
+    elif input_dim == 3:  #  (H, W, C)
         is_grayscale = False
-        # PyTorch 使用 "channels-first" (C, H, W) 格式，所以需要转换维度
-        # (H, W, C) -> (C, H, W)，然后扩展为 (1, C, H, W)
+        # PyTorch  "channels-first" (C, H, W) ，
+        # (H, W, C) -> (C, H, W)， (1, C, H, W)
         tensor_in = input_tensor.permute(2, 0, 1).unsqueeze(0)
     else:
-        raise ValueError(f"输入张量的维度必须是 2 (H,W) 或 3 (H,W,C)，但得到的是 {input_dim}")
+        raise ValueError(f" 2 (H,W)  3 (H,W,C)， {input_dim}")
 
-    # 确保输入张量是浮点数类型，以便计算平均值
+    # ，
     tensor_in = tensor_in.float()
 
-    # --- 3. 定义并执行平均池化操作 ---
-    # 使用 AvgPool2d 可以高效地完成滑动窗口平均操作
-    # kernel_size 是窗口大小
-    # stride 是滑动步长
-    # 当 kernel_size 和 stride 相同时，窗口不会重叠
+    # --- 3.  ---
+    #  AvgPool2d 
+    # kernel_size 
+    # stride 
+    #  kernel_size  stride ，
     pool = nn.AvgPool2d(kernel_size=downsample_factor, stride=downsample_factor).to(device)
     downsampled_tensor = pool(tensor_in)
 
-    # --- 4. 后处理：将输出张量恢复为原始格式 ---
+    # --- 4. ： ---
     if is_grayscale:
         # (1, 1, H', W') -> (H', W')
         output_tensor = downsampled_tensor.squeeze(0).squeeze(0)
@@ -632,24 +632,24 @@ def downsample(arr:torch.Tensor,ds,use_cuda=False,show_detail=False,mode='mid',d
 
 def print_hwc_matrix(matrix: np.ndarray, precision:int = 2):
     """
-    将一个形状为 (H, W, C) 的 NumPy 数组在终端中以 H*W 矩阵的格式打印出来。
-    增加了对浮点数格式化的支持。
+     (H, W, C)  NumPy  H*W 。
+    。
 
     Args:
-        matrix (np.ndarray): 一个三维的 NumPy 数组，形状为 (H, W, C)。
+        matrix (np.ndarray):  NumPy ， (H, W, C)。
         precision (Optional[int], optional): 
-            当数组是浮点类型时，指定要保留的小数位数。
-            如果为 None，则使用默认的字符串表示。默认为 None。
+            ，。
+             None，。 None。
     """
-    # 检查输入是否为三维 NumPy 数组
+    #  NumPy 
     if not isinstance(matrix, np.ndarray) or matrix.ndim != 3:
-        print("错误：输入必须是一个三维的 NumPy 数组 (H, W, C)。")
+        print("： NumPy  (H, W, C)。")
         return
 
-    # 获取数组的维度
+    # 
     H, W, C = matrix.shape
 
-    # 如果数组为空，则不打印
+    # ，
     if H == 0 or W == 0:
         print("[]")
         return
@@ -661,30 +661,30 @@ def print_hwc_matrix(matrix: np.ndarray, precision:int = 2):
             vector = matrix[h, w]
             string_element = ""
             if precision is not None:
-                # 如果指定了精度，对向量中的每个数字进行格式化
+                # ，
                 try:
-                    # 使用 f-string 的嵌套格式化功能
+                    #  f-string 
                     formatted_numbers = [f"{num:.{precision}f}" for num in vector]
                     string_element = f"[{' '.join(formatted_numbers)}]"
                 except (ValueError, TypeError):
-                    # 如果格式化失败（例如，数组不是数字类型），则退回默认方式
+                    # （，），
                     string_element = str(vector)
             else:
-                # 未指定精度，使用 NumPy 默认的字符串转换
+                # ， NumPy 
                 string_element = str(vector)
             
             row_elements.append(string_element)
         string_elements.append(row_elements)
 
-    # 找到所有字符串化后的元素中的最大长度，用于对齐
+    # ，
     max_len = max([len(s) for row in string_elements for s in row] or [0])
 
-    # 打印带边框的矩阵
+    # 
     print("┌" + "─" * (W * (max_len + 2) - 2) + "┐")
     for row in string_elements:
         print("│", end="")
         for element in row:
-            # 使用 ljust 方法填充空格，使每个元素占据相同的宽度
+            #  ljust ，
             print(f"{element:<{max_len}}", end="  ")
         print("│")
     print("└" + "─" * (W * (max_len + 2) - 2) + "┘")
@@ -713,26 +713,26 @@ def resample_from_quad(
     border_mode: int = cv2.BORDER_REPLICATE
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    根据四边形角点重采样图像，并返回坐标映射。
-    此最终版本通过“目标分块”和“源动态裁剪”解决了目标和源图像均可能超大尺寸的问题。
+    ，。
+    “”“”。
 
     Args:
-        source_image (np.ndarray): 输入的源图像 (H, W) 或 (H, W, 3)。
-        quad_coords (np.ndarray): 四边形的四个角点坐标 (4, 2), (row, col)。
-        target_shape (tuple[int, int]): 目标输出图像的尺寸 (h, w)。
-        tile_size (int, optional): 分块处理的块边长。
-        interpolation (int, optional): 插值方法。
-        border_mode (int, optional): 边界模式。
+        source_image (np.ndarray):  (H, W)  (H, W, 3)。
+        quad_coords (np.ndarray):  (4, 2), (row, col)。
+        target_shape (tuple[int, int]):  (h, w)。
+        tile_size (int, optional): 。
+        interpolation (int, optional): 。
+        border_mode (int, optional): 。
 
     Returns:
-        tuple[np.ndarray, np.ndarray]: 重采样图像和坐标映射。
+        tuple[np.ndarray, np.ndarray]: 。
     """
-    # 1. 输入验证和矩阵计算 (与之前相同)
-    # ... (此处省略了与上一版相同的验证和矩阵计算代码，请直接复制过来)
+    # 1.  ()
+    # ... (，)
     if source_image.ndim not in [2, 3]:
-        raise ValueError("输入图像必须是二维 (灰度图) 或三维 (RGB/BGR图) 数组。")
+        raise ValueError(" ()  (RGB/BGR) 。")
     if quad_coords.shape != (4, 2):
-        raise ValueError("角点坐标数组的形状必须是 (4, 2)。")
+        raise ValueError(" (4, 2)。")
 
     h, w = target_shape
     src_h, src_w = source_image.shape[:2]
@@ -746,10 +746,10 @@ def resample_from_quad(
     try:
         M_inv = np.linalg.inv(M)
     except np.linalg.LinAlgError:
-        print("错误: 变换矩阵 M 是奇异矩阵，无法计算逆矩阵。")
+        print(":  M ，。")
         return None, None
 
-    # 2. 准备空的输出画布 (与之前相同)
+    # 2.  ()
     if source_image.ndim == 3:
         output_channels = source_image.shape[2]
         resampled_image = np.zeros((h, w, output_channels), dtype=source_image.dtype)
@@ -758,52 +758,52 @@ def resample_from_quad(
     
     coordinate_map = np.zeros((h, w, 2), dtype=np.float32)
 
-    # 3. 分块处理
+    # 3. 
     for y_start in range(0, h, tile_size):
         for x_start in range(0, w, tile_size):
             tile_h = min(tile_size, h - y_start)
             tile_w = min(tile_size, w - x_start)
             
-            # a. 为当前块创建目标坐标网格并变换回源坐标系
+            # a. 
             y_grid, x_grid = np.mgrid[y_start : y_start + tile_h, x_start : x_start + tile_w]
             target_coords_homo = np.stack((x_grid.ravel(), y_grid.ravel(), np.ones(tile_h * tile_w)), axis=1)
             source_coords_homo = target_coords_homo @ M_inv.T
             w_inv = 1.0 / (source_coords_homo[:, 2] + 1e-9)
             source_coords_xy = source_coords_homo[:, :2] * w_inv[:, np.newaxis]
             
-            # b. 计算所需源区域的边界框 (Bounding Box)
-            # map1 是 x 坐标 (col), map2 是 y 坐标 (row)
+            # b.  (Bounding Box)
+            # map1  x  (col), map2  y  (row)
             map1 = source_coords_xy[:, 0]
             map2 = source_coords_xy[:, 1]
             
-            # 计算边界并增加一点 padding，以防插值时访问到边界外
+            #  padding，
             padding = 2 
             src_x_min = max(0, int(np.floor(map1.min())) - padding)
             src_x_max = min(src_w, int(np.ceil(map1.max())) + padding)
             src_y_min = max(0, int(np.floor(map2.min())) - padding)
             src_y_max = min(src_h, int(np.ceil(map2.max())) + padding)
 
-            # 如果所需区域完全在源图像外，则跳过
+            # ，
             if src_x_min >= src_w or src_x_max <= 0 or src_y_min >= src_h or src_y_max <= 0:
                 continue
 
-            # c. 裁剪源图像ROI和调整坐标
+            # c. ROI
             source_roi = source_image[src_y_min:src_y_max, src_x_min:src_x_max]
             
-            # 将绝对坐标调整为相对于 ROI 的坐标
+            #  ROI 
             adjusted_map1 = (map1 - src_x_min).reshape(tile_h, tile_w).astype(np.float32)
             adjusted_map2 = (map2 - src_y_min).reshape(tile_h, tile_w).astype(np.float32)
 
-            # d. 使用裁剪后的 ROI 和调整后的 map 调用 remap
+            # d.  ROI  map  remap
             resampled_tile = cv2.remap(
-                source_roi,         #  使用裁剪后的小图
-                adjusted_map1,      #  使用调整后的坐标
-                adjusted_map2,      #  使用调整后的坐标
+                source_roi,         #  
+                adjusted_map1,      #  
+                adjusted_map2,      #  
                 interpolation=interpolation,
                 borderMode=border_mode
             )
             
-            # e. 拼接结果
+            # e. 
             resampled_image[y_start:y_start+tile_h, x_start:x_start+tile_w] = resampled_tile
             coordinate_map[y_start:y_start+tile_h, x_start:x_start+tile_w, 0] = map2.reshape(tile_h, tile_w)
             coordinate_map[y_start:y_start+tile_h, x_start:x_start+tile_w, 1] = map1.reshape(tile_h, tile_w)
@@ -845,17 +845,17 @@ def vis_feat_twin(feat1,feat2):
     feat2 = feat2.reshape(H,W,3)
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
 
-    # 在第一个子图中显示第一张图片
+    # 
     ax1.imshow(feat1)
-    ax1.axis('off')  # 关闭坐标轴
+    ax1.axis('off')  # 
     ax1.set_title('Image 1')
 
-    # 在第二个子图中显示第二张图片
+    # 
     ax2.imshow(feat2)
-    ax2.axis('off')  # 关闭坐标轴
+    ax2.axis('off')  # 
     ax2.set_title('Image 2')
 
-    # 调整布局
+    # 
     plt.tight_layout()
     fig.canvas.draw()
     width, height = fig.canvas.get_width_height()
@@ -897,14 +897,14 @@ def vis_conf(conf:np.ndarray,img:np.ndarray,ds,div = .5,output_path = None):
         return canvas_cont,canvas_div
 
 def visualize_subset_points(points1, points2, output_path, padding=50, point_radius=5):
-    # 将两组点合并，以确定画布的整体尺寸
+    # ，
     all_points = np.vstack((points1, points2)) if points1.size > 0 and points2.size > 0 else \
                 points1 if points1.size > 0 else points2
 
     min_x = np.min(all_points[:, 0])
     min_y = np.min(all_points[:, 1])
 
-    # 计算所有点的最大 x 和 y 坐标
+    #  x  y 
     max_x = np.max(all_points[:, 0]) - min_x
     max_y = np.max(all_points[:, 1]) - min_y
 
@@ -915,33 +915,33 @@ def visualize_subset_points(points1, points2, output_path, padding=50, point_rad
     
     
 
-    # 根据最大坐标和边距计算画布尺寸
+    # 
     canvas_width = int(max_x + padding * 2)
     canvas_height = int(max_y + padding * 2)
 
-    # 创建一个白色画布 (BGR 格式)
-    # np.ones 创建一个浮点数数组，乘以 255，然后转换为 uint8 类型
+    #  (BGR )
+    # np.ones ， 255， uint8 
     canvas = np.ones((canvas_height, canvas_width, 3), dtype=np.uint8) * 255
 
-    # 定义颜色 (OpenCV 使用 BGR 顺序)
+    #  (OpenCV  BGR )
     green_color = (0, 255, 0)
     red_color = (0, 0, 255)
 
-    # 绘制第二组点（红色）
+    # （）
     for point in points2:
-        # 将坐标转换为整数元组，并加上边距
+        # ，
         center = (int(point[1]) + padding, int(point[0]) + padding)
         cv2.circle(canvas, center, point_radius, red_color, thickness=-1)
 
-    # 绘制第一组点（绿色）
+    # （）
     for point in points1:
-        # 将坐标转换为整数元组，并加上边距
+        # ，
         center = (int(point[1]) + padding, int(point[0]) + padding)
-        cv2.circle(canvas, center, point_radius, green_color, thickness=-1) # thickness=-1 表示实心圆
+        cv2.circle(canvas, center, point_radius, green_color, thickness=-1) # thickness=-1 
 
     
 
-    # 保存图像到指定路径
+    # 
     cv2.imwrite(output_path, canvas)
 
 def visualize_feature_correspondences(
@@ -952,100 +952,100 @@ def visualize_feature_correspondences(
     draw_lines: bool = True
 ) -> np.ndarray:
     """
-    将两个特征图及其对应点进行可视化。
+    。
 
-    该函数通过联合PCA将特征图降维并归一化到RGB空间，然后并排绘制它们。
-    对应点会用相同的颜色在两张图上标记出来，以便于比较特征的相似性。
+    PCARGB，。
+    ，。
 
     Args:
-        feature_map1 (np.ndarray): 第一个特征图，形状为 (H, W, D)。
-        feature_map2 (np.ndarray): 第二个特征图，形状为 (H, W, D)。
-        points1 (np.ndarray): 第一个特征图上的对应点坐标，形状为 (N, 2)，格式为 (x, y)。
-        points2 (np.ndarray): 第二个特征图上的对应点坐标，形状为 (N, 2)，格式为 (x, y)。
-        draw_lines (bool): 是否在对应点之间绘制连接线，默认为 True。
+        feature_map1 (np.ndarray): ， (H, W, D)。
+        feature_map2 (np.ndarray): ， (H, W, D)。
+        points1 (np.ndarray): ， (N, 2)， (x, y)。
+        points2 (np.ndarray): ， (N, 2)， (x, y)。
+        draw_lines (bool): ， True。
 
     Returns:
-        np.ndarray: 一个包含最终可视化结果的RGB图像的NumPy数组。
+        np.ndarray: RGBNumPy。
     """
-    # --- 1. 输入验证 ---
+    # --- 1.  ---
     if not (isinstance(feature_map1, np.ndarray) and isinstance(feature_map2, np.ndarray) and
             isinstance(points1, np.ndarray) and isinstance(points2, np.ndarray)):
-        raise TypeError("所有输入都必须是NumPy数组。")
+        raise TypeError("NumPy。")
         
     if feature_map1.shape[:2] != feature_map2.shape[:2]:
-        raise ValueError("两个特征图的高度（H）和宽度（W）必须相同。")
+        raise ValueError("（H）（W）。")
     if feature_map1.shape[2] != feature_map2.shape[2]:
-        raise ValueError("两个特征图的特征维度（D）必须相同。")
+        raise ValueError("（D）。")
     if points1.shape != points2.shape:
-        raise ValueError("两组对应点的数量和维度必须相同。")
+        raise ValueError("。")
     if points1.ndim != 2 or points1.shape[1] != 2:
-        raise ValueError("坐标点数组的形状必须是 (N, 2)。")
+        raise ValueError(" (N, 2)。")
 
     H, W, D = feature_map1.shape
     N = points1.shape[0]
 
-    # --- 2. 联合PCA降维与归一化 ---
-    # 为了公平比较，我们将两个特征图的数据合并在一起进行PCA和缩放
+    # --- 2. PCA ---
+    # ，PCA
     fm1_reshaped = feature_map1.reshape((H * W, D))
     fm2_reshaped = feature_map2.reshape((H * W, D))
     all_features = np.concatenate([fm1_reshaped, fm2_reshaped], axis=0)
 
-    # 应用PCA将特征降到3维
+    # PCA3
     pca = PCA(n_components=3)
     features_pca = pca.fit_transform(all_features)
 
-    # # 使用MinMaxScaler将PCA结果归一化到[0, 1]范围，以便显示为RGB颜色
+    # # MinMaxScalerPCA[0, 1]，RGB
     # scaler = MinMaxScaler(feature_range=(1e-6, 1. - 1e-6))
     # features_normalized = scaler.fit_transform(features_pca)
     features_normalized = (features_pca - features_pca.min()) / (features_pca.max() - features_pca.min() + 1e-9)
 
-    # 将处理后的数据分离并重塑为两个RGB图像
+    # RGB
     img1_rgb = features_normalized[:H * W, :].reshape((H, W, 3))
     img2_rgb = features_normalized[H * W:, :].reshape((H, W, 3))
 
-    # --- 3. 使用Matplotlib进行绘图 ---
-    # 根据图像的宽高比动态计算画布大小
+    # --- 3. Matplotlib ---
+    # 
     fig_w = 12
     fig_h = fig_w * H / (W * 2) if W > 0 else 6
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(fig_w, fig_h), dpi=150)
     fig.tight_layout(pad=3.0)
 
-    # 显示两个降维后的特征图
+    # 
     ax1.imshow(img1_rgb)
     ax1.axis('off')
 
     ax2.imshow(img2_rgb)
     ax2.axis('off')
 
-    # --- 4. 绘制对应点和连接线 ---
+    # --- 4.  ---
     if N > 0:
-        # **修改后的逻辑**:
-        # 1. 从降维后的RGB图像中直接采样，作为点的颜色
-        # 2. 保留独立的颜色映射(jet)，仅用于绘制连接线，以唯一标识匹配对
+        # ****:
+        # 1. RGB，
+        # 2. (jet)，，
 
-        # 将浮点坐标转换为整数索引用于颜色采样
-        # 注意：numpy索引是(行, 列)，对应于(y, x)
+        # 
+        # ：numpy(, )，(y, x)
         points1_idx = np.round(points1).astype(int)
         points2_idx = np.round(points2).astype(int)
         
-        # 裁剪索引以确保它们在图像边界内
+        # 
         points1_idx[:, 0] = np.clip(points1_idx[:, 0], 0, W - 1)
         points1_idx[:, 1] = np.clip(points1_idx[:, 1], 0, H - 1)
         points2_idx[:, 0] = np.clip(points2_idx[:, 0], 0, W - 1)
         points2_idx[:, 1] = np.clip(points2_idx[:, 1], 0, H - 1)
 
-        # 在对应点位置采样RGB颜色
+        # RGB
         point_colors1 = img1_rgb[points1_idx[:, 1], points1_idx[:, 0]]
         point_colors2 = img2_rgb[points2_idx[:, 1], points2_idx[:, 0]]
         
-        # 在两张图上分别绘制点，点的颜色是其背景特征的颜色
-        # s是点的大小, edgecolor使其在各种背景下都可见
+        # ，
+        # s, edgecolor
         ax1.scatter(points1[:, 0], points1[:, 1], c=point_colors1, s=25, edgecolor='white', linewidth=1.0, zorder=3)
         ax2.scatter(points2[:, 0], points2[:, 1], c=point_colors2, s=25, edgecolor='white', linewidth=1.0, zorder=3)
 
-        # (可选) 在对应点之间绘制连接线
+        # () 
         if draw_lines:
-            # 生成 N 个独特的颜色，专门用于连接线，以便唯一标识匹配对
+            #  N ，，
             line_cmap = plt.get_cmap('jet')
             line_colors = line_cmap(np.linspace(0, 1, N))
             for i in range(N):
@@ -1058,54 +1058,54 @@ def visualize_feature_correspondences(
                 )
                 fig.add_artist(con)
 
-    # --- 5. 将画布转换为NumPy数组 ---
+    # --- 5. NumPy ---
     fig.canvas.draw()
-    # 从buffer中获取RGB数据
+    # bufferRGB
     width, height = fig.canvas.get_width_height()
     img_array = np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8).reshape((height, width, 4))[:,:,1:]
 
-    # 关闭图形，防止在Jupyter等环境中自动显示
+    # ，Jupyter
     plt.close(fig)
 
     return img_array
 
 def visualize_obj_error(obj_P2: np.ndarray, pred_P2: np.ndarray, canvas_size: tuple = (800, 800), sample_k: int = 1000, ranges = None):
     """
-    可视化坐标回归的误差，生成三种分析图像。
+    ，。
 
     Args:
-        obj_P2 (np.ndarray): 真实的坐标数组, shape=(N, 2)。
-        pred_P2 (np.ndarray): 预测的坐标数组, shape=(N, 2)。
-        canvas_size (tuple): 输出图像的尺寸。
-        sample_k (int): 为了避免图像过于杂乱，随机采样的点的数量。
+        obj_P2 (np.ndarray): , shape=(N, 2)。
+        pred_P2 (np.ndarray): , shape=(N, 2)。
+        canvas_size (tuple): 。
+        sample_k (int): ，。
 
     Returns:
-        dict: 一个包含三种可视化图像 (numpy 数组) 的字典。
+        dict:  (numpy ) 。
               {'quiver': quiver_plot, 'heatmap': error_heatmap, 'histogram': error_histogram}
     """
     def fig_to_numpy(fig: plt.Figure) -> np.ndarray:
         """
-        一个更稳定和高效的 Matplotlib Figure 转 NumPy 数组的函数。
-        它直接从 canvas 缓冲区读取数据，避免了文件I/O和额外的库依赖。
+         Matplotlib Figure  NumPy 。
+         canvas ，I/O。
         """
-        # 1. 触发画布的绘制（render）
+        # 1. （render）
         fig.canvas.draw()
 
         width, height = fig.canvas.get_width_height()
         img_array = np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8).reshape((height, width, 4))[:,:,1:]
         return img_array
 
-    # 如果点太多，进行随机采样
+    # ，
     num_points = obj_P2.shape[0]
     if num_points > sample_k:
         indices = np.random.choice(num_points, sample_k, replace=False)
         obj_P2 = obj_P2[indices]
         pred_P2 = pred_P2[indices]
 
-    # --- 数据准备 ---
-    # 计算误差向量
+    # ---  ---
+    # 
     error_vectors = pred_P2 - obj_P2
-    # 计算每个点的误差大小（欧氏距离）
+    # （）
     error_magnitudes = np.linalg.norm(error_vectors, axis=1)
 
     if ranges is None:
@@ -1114,10 +1114,10 @@ def visualize_obj_error(obj_P2: np.ndarray, pred_P2: np.ndarray, canvas_size: tu
         max_coords = all_points.max(axis=0)
         range_coords = max_coords - min_coords
         
-        # 防止范围为0
+        # 0
         range_coords[range_coords == 0] = 1
 
-        # 将坐标缩放到画布尺寸
+        # 
         obj_scaled = (obj_P2 - min_coords) / range_coords * np.array([canvas_size[1], canvas_size[0]]) * 0.9 + 0.05 * np.array([canvas_size[1], canvas_size[0]])
         pred_scaled = (pred_P2 - min_coords) / range_coords * np.array([canvas_size[1], canvas_size[0]]) * 0.9 + 0.05 * np.array([canvas_size[1], canvas_size[0]])
     else:
