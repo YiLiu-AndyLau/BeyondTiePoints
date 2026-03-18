@@ -1,11 +1,9 @@
 # BeyondTiePoints
 
-BeyondTiePoints is a remote-sensing image alignment framework built around:
+Beyond-Tie-Points is a multi-view satellite image alignment framework built around:
 
 1. **Encoder pretraining** for robust, confidence-aware dense features.
-2. **PBA (Pyramid Bundle Adjustment)** for multi-level RPC affine refinement over overlapping image grids.
-
-The repository includes both the feature pretraining pipeline (`pretrain/`) and the final adjustment pipeline (`main.py` + `adjustment_core/`).
+2. **PBA (Planar Block Adjustment)** for multi-view satellite images based on dense feature consistency.
 
 ---
 
@@ -74,7 +72,7 @@ Use the provided `env.yaml` (Python 3.10):
 
 ```bash
 conda env create -f env.yaml
-conda activate beyond-tie-points
+conda activate byt
 ```
 
 > The current environment file targets PyTorch + CUDA 12.1 builds. If you need CPU-only runtime, adjust torch/torchvision/cuda packages accordingly.
@@ -88,12 +86,11 @@ conda activate beyond-tie-points
 Pretraining expects HDF5 datasets under `--dataset_path`:
 
 - `train_data.h5`
-- `test_data.h5`
 
 Each sample key contains at least:
 
 - `images/image_i` (grayscale image)
-- `obj` (object-space map)
+- `obj` (object-space map: a (H,W,3) matrix recording (x,y,h) coordinates of each pixel)
 - `residuals/residual_i`
 
 See `pretrain/dataloader.py` for exact indexing and fields.
@@ -104,12 +101,12 @@ A typical distributed launch:
 
 ```bash
 torchrun --nproc_per_node=4 pretrain/pretrain.py \
-  --dataset_path ./datasets \
+  --dataset_path ./path/to/dataset \
   --dino_weight_path ./weights/dinov3_vitl16_pretrain_sat493m-eadcf0ff.pth \
   --encoder_output_path ./weights/pretrain_run \
   --batch_size 8 \
-  --max_epoch 200 \
-  --lr_encoder_max 5e-4 \
+  --max_epoch 1000 \
+  --lr_encoder_max 1e-4 \
   --lr_decoder_max 1e-3
 ```
 
@@ -117,11 +114,13 @@ Single-process debugging example:
 
 ```bash
 python pretrain/pretrain.py \
-  --dataset_path ./datasets \
+  --dataset_path ./path/to/dataset \
   --dino_weight_path ./weights/dinov3_vitl16_pretrain_sat493m-eadcf0ff.pth \
-  --encoder_output_path ./weights/pretrain_debug \
+  --encoder_output_path ./weights/pretrain_run \
   --batch_size 2 \
-  --max_epoch 2
+  --max_epoch 1000 \
+  --lr_encoder_max 1e-4 \
+  --lr_decoder_max 1e-3
 ```
 
 ### Expected Outputs
@@ -161,7 +160,7 @@ Set `--root` to a directory containing:
 
 ```bash
 python main.py \
-  --root /path/to/project_data \
+  --root /path/to/input_data \
   --dino_path ./weights \
   --adapter_path ./weights/pretrain_run/adapter.pth \
   --use_ddp auto \
@@ -175,7 +174,7 @@ Distributed launch example:
 
 ```bash
 torchrun --nproc_per_node=4 main.py \
-  --root /path/to/project_data \
+  --root /path/to/inputt_data \
   --dino_path ./weights \
   --adapter_path ./weights/pretrain_run/adapter.pth \
   --use_ddp true \

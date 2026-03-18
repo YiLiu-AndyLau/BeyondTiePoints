@@ -39,13 +39,9 @@ class DecoderFinetune(nn.Module):
             nn.Conv2d(in_channels // 16,1,1,1,0),
             nn.Tanh()
         )
-        # self.bn = bnac(in_channels)
 
 
     def forward(self, res):
-        # res = res / torch.norm(res,dim=1,keepdim=True)
-        # if self.use_bn:
-        #     res = self.bn(res)
         for block in self.blocks:
             x = block(res)
             res = res + x

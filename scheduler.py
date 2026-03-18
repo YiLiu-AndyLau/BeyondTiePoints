@@ -4,22 +4,17 @@ import math
 from typing import List
 class MultiStageOneCycleLR(_LRScheduler):
     def __init__(self, optimizer: Optimizer, total_steps: int, warmup_ratio: float, cooldown_ratio: float, last_epoch: int = -1, verbose: bool = False):
-        # 
         self.total_steps = total_steps
         self.warmup_steps = int(total_steps * warmup_ratio)
         self.cooldown_steps = int(total_steps * cooldown_ratio)
         
-        # 
         self.constant_steps = total_steps - self.warmup_steps - self.cooldown_steps
         
-        # 
         if self.constant_steps < 0:
             raise ValueError("1。")
 
-        # 
         self.cooldown_start_step = self.warmup_steps + self.constant_steps
 
-        # ：
         self.cooldown_triggered = False
         self.cooldown_trigger_step = None
 
@@ -34,7 +29,6 @@ class MultiStageOneCycleLR(_LRScheduler):
             
             self.cooldown_triggered = True
             self.cooldown_trigger_step = self.last_epoch
-            # ：
             self.total_steps = new_total_steps
 
     def get_lr(self) -> List[float]:

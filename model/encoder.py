@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from typing import List
 
 class PositionalEncoding(nn.Module):
-    """，"""
+    ""","""
     def __init__(self, dim: int, max_shape: tuple = (256, 256)):
         super().__init__()
         self.dim = dim
@@ -33,9 +33,7 @@ class PositionalEncoding(nn.Module):
         return x + self.pe[:, :, :x.size(2), :x.size(3)]
 
 
-# ---  1: Encoder ---
 class AttentionBlock(nn.Module):
-    """，"""
     def __init__(self, dim: int, num_heads: int = 8):
         super().__init__()
         assert dim % num_heads == 0, "dim must be divisible by num_heads"
@@ -55,19 +53,15 @@ class AttentionBlock(nn.Module):
         """
         B, N, D = query.shape
         
-        # 
         q = self.q_proj(query).view(B, N, self.num_heads, self.head_dim).transpose(1, 2)
         k = self.k_proj(key).view(B, N, self.num_heads, self.head_dim).transpose(1, 2)
         v = self.v_proj(value).view(B, N, self.num_heads, self.head_dim).transpose(1, 2)
 
-        # Scaled Dot-Product Attention
         attn_scores = (q @ k.transpose(-2, -1)) * self.scale
         attn = F.softmax(attn_scores, dim=-1)
 
-        # 
         x = (attn @ v).transpose(1, 2).reshape(B, N, D)
-        
-        # 
+
         return self.out_proj(x)
 
 class Adapter(nn.Module):
@@ -113,7 +107,6 @@ class Adapter(nn.Module):
         if self.unitize:
             feat = F.normalize(feat,dim=1)
         conf = self.conf_head(x)
-        # feat = F.normalize(feat,dim=1)
         return feat,conf
     
     

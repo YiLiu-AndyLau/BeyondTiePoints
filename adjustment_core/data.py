@@ -57,7 +57,7 @@ class SharedGrid():
         
         for img in all_rs_images:
             try:
-                corners_sampline_i = img.xy_to_sampline(corners_geo) # [cite: rs_image_1022.py, line 85]
+                corners_sampline_i = img.xy_to_sampline(corners_geo)
                 
                 if (corners_sampline_i.min() < 0 or 
                     corners_sampline_i[:, 0].max() > img.W or 

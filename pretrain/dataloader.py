@@ -360,8 +360,6 @@ class PretrainDataset(Dataset):
         else:
             raise ValueError("mode should be either train or test")
 
-        # if dataset_num is None or dataset_num <= 0:
-        #     dataset_num = len(self.database.keys())
         if dataset_idxs is None:
             self.dataset_num = len(self.database.keys())
         else:
@@ -379,11 +377,6 @@ class PretrainDataset(Dataset):
         if obj_map_coefs is None:
             for key in tqdm(self.database_keys):
                 obj = centerize_obj(self.database[key]['obj'][:])
-                # self.obj_map_coefs.append({
-                #     'x':get_map_coef(obj[:,:,0].reshape(-1)),
-                #     'y':get_map_coef(obj[:,:,1].reshape(-1)),
-                #     'h':get_map_coef(obj[:,:,2].reshape(-1))
-                # })
                 self.obj_map_coefs.append({
                     'x':np.array([obj[:,:,0].min(),obj[:,:,0].max()]),
                     'y':np.array([obj[:,:,1].min(),obj[:,:,1].max()]),
@@ -403,12 +396,12 @@ class PretrainDataset(Dataset):
                 transforms.ToTensor(),
                 transforms.RandomApply([transforms.ColorJitter(.4,.4,.4,.1)],p=.7),
                 transforms.RandomInvert(p=.2),
-                transforms.Normalize(norm_coefs['mean'], norm_coefs['std']) # (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
+                transforms.Normalize(norm_coefs['mean'], norm_coefs['std'])
                 ])
         else:
             self.transform = transforms.Compose([
                 transforms.ToTensor(),
-                transforms.Normalize(norm_coefs['mean'], norm_coefs['std']) # (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
+                transforms.Normalize(norm_coefs['mean'], norm_coefs['std'])
                 ])
         
         self.use_clahe = use_clahe
@@ -455,27 +448,12 @@ class PretrainDataset(Dataset):
                           downsample_ratio=self.DOWNSAMPLE,
                           p_rotate=1.0,
                           max_angle_deg=180.0)
-        # print(f"img:{imgs1.shape}\t{imgs1.min()}\t{imgs1.max()}")
-        # print(f"obj:{obj1.shape}\t{obj1.min()}\t{obj1.max()}")
-        # print(f"res:{residual1.shape}\t{np.nanmean(residual1)}\t{(~np.isnan(residual1)).sum()}")
-        # print(f"ovl:{overlaps_1.shape}\t{overlaps_1[0][:10]}")
-
-
-        # imgs1 = torch.from_numpy(np.stack([image_1_full[tl[0]:tl[0] + self.input_size,tl[1]:tl[1] + self.input_size] for tl in windows],axis=0)).permute(0,3,1,2).to(torch.float32) # B,3,H,W
-        # imgs2 = torch.from_numpy(np.stack([image_2_full[tl[0]:tl[0] + self.input_size,tl[1]:tl[1] + self.input_size] for tl in windows],axis=0)).permute(0,3,1,2).to(torch.float32)
-        # imgs1 = self.transform(imgs1)
-        # imgs2 = self.transform(imgs2)
         imgs1 = torch.stack([self.transform(img) for img in imgs1],dim=0)
         imgs2 = torch.stack([self.transform(img) for img in imgs2],dim=0)
 
 
         obj1 = torch.from_numpy(np.stack([downsample(obj,self.DOWNSAMPLE) for obj in obj1],axis=0)).to(torch.float32)
         obj2 = torch.from_numpy(np.stack([downsample(obj,self.DOWNSAMPLE) for obj in obj2],axis=0)).to(torch.float32)
-
-        # test_obj1 = sample_bilinear(obj1,overlaps_1)
-        # test_obj2 = sample_bilinear(obj2,overlaps_2)
-        # obj_dis = torch.norm(test_obj1[:,:2] - test_obj2[:,:2],dim=-1).reshape(-1)
-        # print(f"dis:{obj_dis.min().item()} \t {obj_dis.max().item()} \t {obj_dis.mean().item()} \t {obj_dis.median().item()}\n")
 
         residual1 = np.stack([residual_average(residual,self.DOWNSAMPLE) for residual in residual1],axis=0)
         residual2 = np.stack([residual_average(residual,self.DOWNSAMPLE) for residual in residual2],axis=0)
@@ -486,9 +464,6 @@ class PretrainDataset(Dataset):
 
         overlaps_1 = torch.from_numpy(overlaps_1)
         overlaps_2 = torch.from_numpy(overlaps_2)
-        # t2 = time.perf_counter()
-
-        # print(t1 - t0, t2 - t1)
         
         return imgs1,imgs2,obj1,obj2,residual1,residual2,overlaps_1,overlaps_2,torch.tensor(index)
 
@@ -496,7 +471,7 @@ class PretrainDataset(Dataset):
 class ImageSampler(Sampler):
     """
     rank。
-    iteration，GPU。
+    iteration,GPU。
     """
     def __init__(self, data_source, shuffle=True):
         self.data_source = data_source
@@ -508,8 +483,6 @@ class ImageSampler(Sampler):
         indices = list(range(n))
         
         if self.shuffle:
-            # epoch，epochshuffle，
-            # epochshuffle。
             g = torch.Generator()
             g.manual_seed(self.epoch)
             indices = torch.randperm(n, generator=g).tolist()

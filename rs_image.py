@@ -24,11 +24,8 @@ class RSImage():
         self.options = options
         self.root = root
         self.id = id
-        # self.image = self.__load_image__(os.path.join(root,'image.tif'))
         
         self.image = cv2.imread(os.path.join(root,'image.png'),cv2.IMREAD_GRAYSCALE)
-        # if options.use_clahe:
-        #     self.image = clahe.apply(self.image)
         self.image = np.stack([self.image] * 3,axis=-1)
         self.dem = np.load(os.path.join(root,'dem.npy'),mmap_mode='r')
         if os.path.exists(os.path.join(root,'tie_points.txt')):
@@ -46,10 +43,6 @@ class RSImage():
         self.rpc = RPCModelParameterTorch()
         self.rpc.load_from_file(os.path.join(root,'rpc.txt'))
         self.rpc.to_gpu()
-        # if os.path.exists(os.path.join(root,'dem.tif')):
-        #     self.dem = self.__sample_dem__(os.path.join(root,'dem.tif'))
-        # else:
-        #     self.dem = None
         
         self.corner_xys = self.__get_corner_xys__() #[tl,tr,bl,br] [x,y]
         self.overlap_grids = []
@@ -62,7 +55,6 @@ class RSImage():
         with rasterio.open(path) as src:
             data = src.read().astype(np.float32)
             for band in range(data.shape[0]):
-                # data[band] = (data[band] - data[band].min()) / (data[band].max() - data[band].min() + 1e-6)
                 data[band] = (255. * data[band] / data[band].max())
             if data.ndim == 3:
                 data = np.transpose(data, (1, 2, 0)).squeeze()

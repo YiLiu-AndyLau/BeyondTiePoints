@@ -76,12 +76,7 @@ class RPCModelParameterTorch:
             self.LONDEM = data[150:170]
         else:
             self.Calculate_Inverse_RPC()
-        
-    
-        # if data.shape[0] == 96:
-        #     self.raw_adjust_params = data[90:96]
-        # else:
-        #     self.raw_adjust_params = None
+
         
         if rfm_line > 0:
             self.raw_adjust_params = [np.float64(text.split()[1]) for text in all_the_text[rfm_line + 1:]]
@@ -105,11 +100,11 @@ class RPCModelParameterTorch:
         line_max = self.LINE_OFF + self.LINE_SCALE
         line_min = self.LINE_OFF - self.LINE_SCALE
 
-        lat = torch.linspace(lat_min, lat_max, xy_sample).to(self.device,dtype=torch.double) #np.linspace(lat_min, lat_max, xy_sample)
+        lat = torch.linspace(lat_min, lat_max, xy_sample).to(self.device,dtype=torch.double)
         lon = torch.linspace(lon_min, lon_max, xy_sample).to(self.device,dtype=torch.double)
         hei = torch.linspace(hei_min, hei_max, z_sample).to(self.device,dtype=torch.double)
 
-        lat, lon, hei = torch.meshgrid(lat, lon, hei, indexing='ij') # torch/numpy
+        lat, lon, hei = torch.meshgrid(lat, lon, hei, indexing='ij') 
 
         lat = lat.reshape(-1)
         lon = lon.reshape(-1)
@@ -148,33 +143,32 @@ class RPCModelParameterTorch:
             x = torch.zeros(ma.shape[0], dtype=torch.double, device=self.device)
 
         n = ma.shape[0]
-        mak = ma.clone() #np.copy(ma)
+        mak = ma.clone()
         mak += k * torch.eye(n).to(self.device,dtype=torch.double)
-        lk = lv.clone() #np.copy(lv)
+        lk = lv.clone()
 
         finish_time = 0
 
         for times in range(1000):
             try:
-                x1 = torch.linalg.solve(mak,lk) #np.linalg.solve(mak, lk)
+                x1 = torch.linalg.solve(mak,lk)
             except torch.linalg.LinAlgError:
                 k *= 10
                 mak = ma.clone() + k * torch.eye(n).to(self.device, dtype=torch.double)
                 continue
                 
-            dif = torch.abs(x1 - x)#np.fabs(x1 - x)
+            dif = torch.abs(x1 - x)
             maxdif = torch.max(dif)
             x = x1
             lk = lv + k * x
 
             finish_time = times + 1
-            # print(finish_time, maxdif)
             if maxdif < 1.0e-10:
                 break
         return x, finish_time
 
     def Solve_Inverse_RPC(self, grid):
-        samp, line, lat, lon, hei = torch.hsplit(grid,5) #np.hsplit(grid.copy(), 5)
+        samp, line, lat, lon, hei = torch.hsplit(grid,5)
 
         samp = samp.reshape(-1)
         line = line.reshape(-1)
@@ -182,7 +176,6 @@ class RPCModelParameterTorch:
         lon = lon.reshape(-1)
         hei = hei.reshape(-1)
 
-        # 
         samp = samp - self.SAMP_OFF
         samp = samp / self.SAMP_SCALE
         line = line - self.LINE_OFF
@@ -204,14 +197,13 @@ class RPCModelParameterTorch:
         A[n_num:, 39:59] = - coef
         A[n_num:, 59:78] = lon.reshape(-1, 1) * coef[:, 1:]
 
-        l = torch.cat((lat, lon), -1) #np.concatenate((lat, lon), -1)
+        l = torch.cat((lat, lon), -1)
         l = -l
 
         ATA = torch.matmul(A.T, A)
 
         ATl = torch.matmul(A.T, l)
 
-        # 
         x, times = self._solve_lstsq(ATA, ATl)
 
         self.LATNUM = x[0:20]
@@ -258,28 +250,21 @@ class RPCModelParameterTorch:
             device = A.device
             dtype = A.dtype
 
-            # 
             bottom_row = torch.tensor([[0.0, 0.0, 1.0]], dtype=dtype, device=device)
 
-            # 
             A_h = torch.cat([A, bottom_row], dim=0)
             B_h = torch.cat([B, bottom_row], dim=0)
-
-            # ， B @ A
             C_h = B_h @ A_h
 
-            #  (2, 3) 
             return C_h[:2, :]
         self.adjust_params = merge_adjust(self.adjust_params,new_adjust_params).to(self.adjust_params.device).to(torch.double)
         self.Inverse_Adjust()
     
     def Calculate_Adjust(self):
-        corners = np.array([[0.,0.],[100.,0.],[0.,100.]],dtype=np.float32) #line samp
+        corners = np.array([[0.,0.],[100.,0.],[0.,100.]],dtype=np.float32)
         offset_line = self.raw_adjust_params[0] + self.raw_adjust_params[1] * corners[:,1] + self.raw_adjust_params[2] * corners[:,0]
         offset_samp = self.raw_adjust_params[3] + self.raw_adjust_params[4] * corners[:,1] + self.raw_adjust_params[5] * corners[:,0]
-        
-        # ： offset_corners  ( - )
-        #  af_trans  ( -> ) 
+
         offset_corners = corners - np.stack([offset_line,offset_samp],axis=1) 
         
         af_trans = cv2.getAffineTransform(corners,offset_corners)
@@ -287,13 +272,12 @@ class RPCModelParameterTorch:
 
     def Merge_Adjust(self):
         """
-         self.adjust_params ""（Bake）
-        RPC（LNUM, LDEM, SNUM, SDEM）。
-        ，
+         self.adjust_params ""(Bake)
+        RPC(LNUM, LDEM, SNUM, SDEM)。
+        ,
          adjust_params 。
         """
         
-        # 1. 
         identity_adjust = torch.tensor([
             [1.,0.,0.],
             [0.,1.,0.]
@@ -303,64 +287,48 @@ class RPCModelParameterTorch:
             return
 
 
-        # 2.  3D  ()
-        #    Create_Virtual_3D_Grid  RPC_OBJ2PHOTO
-        #    RPC_OBJ2PHOTO  **  self.adjust_params_inv
-        #    ，grid_obj  (line_final, samp_final) 
-        grid_obj = self.Create_Virtual_3D_Grid(xy_sample=50, z_sample=30) # 
+        grid_obj = self.Create_Virtual_3D_Grid(xy_sample=50, z_sample=30) 
 
         if grid_obj.shape[0] == 0:
             return
 
-        # 3. 
         samp_target = grid_obj[:, 0]
         line_target = grid_obj[:, 1]
         lat = grid_obj[:, 2]
         lon = grid_obj[:, 3]
         hei = grid_obj[:, 4]
 
-        # 4. 
-        #  ()
         P = (lat - self.LAT_OFF) / self.LAT_SCALE
         L = (lon - self.LONG_OFF) / self.LONG_SCALE
         H = (hei - self.HEIGHT_OFF) / self.HEIGHT_SCALE
-        
-        #  ()
-        #  **  offset/scale ，
-        # ，。
+
         line_target_norm = (line_target - self.LINE_OFF) / self.LINE_SCALE
         samp_target_norm = (samp_target - self.SAMP_OFF) / self.SAMP_SCALE
 
-        # 5.  ()
+
         coef = self.RPC_PLH_COEF(P, L, H)
         n_num = coef.shape[0]
-        
-        #  LNUM_new  LDEM_new[1:] (39)
-        # A_L * x_L = l_L
-        # [coef, -line_norm * coef[:, 1:]] * [LNUM_new, LDEM_new[1:]] = line_norm * (LDEM_new[0]=1)
+
         A_L = torch.zeros((n_num, 39), dtype=torch.double, device=self.device)
         A_L[:, 0:20] = coef
         A_L[:, 20:39] = -line_target_norm.unsqueeze(-1) * coef[:, 1:]
-        l_L = line_target_norm * coef[:, 0] # coef[:, 0] is 1.0
+        l_L = line_target_norm * coef[:, 0] 
         
         ATA_L = A_L.T @ A_L
         ATl_L = A_L.T @ l_L
         
-        #  SNUM_new  SDEM_new[1:] (39)
-        # A_S * x_S = l_S
+
         A_S = torch.zeros((n_num, 39), dtype=torch.double, device=self.device)
         A_S[:, 0:20] = coef
         A_S[:, 20:39] = -samp_target_norm.unsqueeze(-1) * coef[:, 1:]
-        l_S = samp_target_norm * coef[:, 0] # coef[:, 0] is 1.0
+        l_S = samp_target_norm * coef[:, 0] 
         
         ATA_S = A_S.T @ A_S
         ATl_S = A_S.T @ l_S
 
-        # 6. 
         x_L, _ = self._solve_lstsq(ATA_L, ATl_L)
         x_S, _ = self._solve_lstsq(ATA_S, ATl_S)
 
-        # 7.   RPC 
         self.LNUM = x_L[0:20].clone()
         self.LDEM[0] = 1.0
         self.LDEM[1:20] = x_L[20:39].clone()
@@ -368,14 +336,8 @@ class RPCModelParameterTorch:
         self.SDEM[0] = 1.0
         self.SDEM[1:20] = x_S[20:39].clone()
 
-        # 8.  adjust_params
-        #     Calculate_Inverse_RPC ！
-        #     Calculate_Inverse_RPC  Create_Virtual_3D_Grid，
-        #      ** 。
         self.Clear_Adjust()
 
-        # 9.   RPC 
-        #    (，)
         times = self.Calculate_Inverse_RPC()
 
     def RPC_PLH_COEF(self, P, L, H):
@@ -419,8 +381,7 @@ class RPCModelParameterTorch:
         lat = self.convert_tensor(inlat,self.device)
         lon = self.convert_tensor(inlon,self.device)
         hei = self.convert_tensor(inhei,self.device)
-        
-        # 1D
+
         is_batched = lat.dim() > 0
         if not is_batched:
             lat = lat.unsqueeze(0)
@@ -434,7 +395,6 @@ class RPCModelParameterTorch:
 
         coef = self.RPC_PLH_COEF(lat_norm, lon_norm, hei_norm)
 
-        # # rpc.SNUM: (20), coef: (n, 20) out_pts: (n, 2)
         samp_norm = torch.sum(coef * self.SNUM,dim=-1) / torch.sum(coef * self.SDEM,dim=-1)
         line_norm = torch.sum(coef * self.LNUM,dim=-1) / torch.sum(coef * self.LDEM,dim=-1)
 
@@ -464,8 +424,7 @@ class RPCModelParameterTorch:
         hei = self.convert_tensor(inhei,self.device)
         samp = self.convert_tensor(insamp,self.device)
         line = self.convert_tensor(inline,self.device)
- 
-        # 1D
+
         is_batched = samp.dim() > 0
         if not is_batched:
             samp = samp.unsqueeze(0)
@@ -483,7 +442,6 @@ class RPCModelParameterTorch:
 
         coef = self.RPC_PLH_COEF(samp_norm, line_norm, hei_norm)
 
-        # rpc.SNUM: (20), coef: (n, 20) out_pts: (n, 2)
         lat_norm = torch.sum(coef * self.LATNUM, dim=-1) / torch.sum(coef * self.LATDEM, dim=-1)
         lon_norm = torch.sum(coef * self.LONNUM, dim=-1) / torch.sum(coef * self.LONDEM, dim=-1)
 
@@ -575,16 +533,13 @@ class RPCModelParameterTorch:
         【】VJP。
         。
         """
-        #  mu_xyh ， autograd.grad 
         mu_xyh.requires_grad_(True)
         if mu_xyh.grad is not None:
             mu_xyh.grad.zero_()
 
-        # ---  ---
         line, samp = self.RPC_XY2LINESAMP(mu_xyh[:, 0], mu_xyh[:, 1], mu_xyh[:, 2])
         mu_linesamp = torch.stack([line, samp], dim=-1)
 
-        # ---  (VJP) ---
         grad_line, = torch.autograd.grad(
             outputs=line, inputs=mu_xyh,
             grad_outputs=torch.ones_like(line),
@@ -593,7 +548,7 @@ class RPCModelParameterTorch:
         grad_samp, = torch.autograd.grad(
             outputs=samp, inputs=mu_xyh,
             grad_outputs=torch.ones_like(samp),
-            create_graph=False, retain_graph=False, # 
+            create_graph=False, retain_graph=False, 
         )
         
         var_xyh = sigma_xyh.pow(2)
@@ -677,7 +632,6 @@ class RPCModelParameterTorch:
         :param filepath: where to store the file
         :return:
         """
-        # CPU .item()
         original_device = self.device
         if self.device.type != 'cpu':
             self.to_gpu('cpu')
@@ -726,10 +680,6 @@ class RPCModelParameterTorch:
                      'LONG_DEN_COEFF_19:', 'LONG_DEN_COEFF_20:']
         addition1 = ['pixels', 'pixels', 'degrees', 'degrees', 'meters', 'pixels', 'pixels', 'degrees', 'degrees',
                      'meters']
-        
-        # addition2 = ['CL0:','CLS:','CLL:','CS0:','CSS:','CSL:']
-
-        # corection_params = [self.adjust_params[0,2],self.adjust_params[0,1],self.adjust_params[0,0] - 1.,self.adjust_params[1,2],self.adjust_params[1,1] - 1.,self.adjust_params[1,0]]
 
         text = ""
 
@@ -761,15 +711,11 @@ class RPCModelParameterTorch:
         for i in range(150, 170):
             text += addition0[i] + " " + str(self.LONDEM[i - 150].item()) + "\n"
         
-        # ： RFM ，。
-        # (，，0 RFM )
-        # 。
 
         f = open(filepath, "w")
         f.write(text)
         f.close()
         
-        # 
         if original_device.type != 'cpu':
             self.to_gpu(original_device)
 

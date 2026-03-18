@@ -28,21 +28,7 @@ import math
 def get_current_time():
     return datetime.now().strftime("%Y%m%d%H%M%S")
 def crop_rect_from_image(image, rect_points, size):
-    """
-    。
-
-    :
-    - image: cv2.imread()。
-    - rect_points: ，。
-                  : [(x1, y1), (x2, y2), (x3, y3), (x4, y4)]
-
-    :
-    - cropped_image: 。
-    """
-    # numpy
     rect = np.array(rect_points, dtype="float32")
-
-    # 
     width_a = np.linalg.norm(rect[0] - rect[1])
     width_b = np.linalg.norm(rect[2] - rect[3])
     max_width = int(max(width_a, width_b))
@@ -50,18 +36,13 @@ def crop_rect_from_image(image, rect_points, size):
     height_a = np.linalg.norm(rect[0] - rect[3])
     height_b = np.linalg.norm(rect[1] - rect[2])
     max_height = int(max(height_a, height_b))
-
-    # （）
     dst = np.array([[0, 0], [0, max_width-1], [max_height-1, max_width-1], [max_height-1, 0]], dtype="float32")
 
     rect_xy = np.array([[p[1],p[0]] for p in rect], dtype="float32")
     dst_xy = np.array([[p[1],p[0]]for p in dst], dtype="float32")
 
-    # 
     M = cv2.getPerspectiveTransform(rect_xy, dst_xy)
     M_inv = cv2.getPerspectiveTransform(dst, rect)
-
-    # 
     warped = cv2.warpPerspective(image.astype(np.float32), M, (max_width, max_height))
 
     if warped.shape[0] < size or warped.shape[1] < size:
@@ -73,13 +54,12 @@ def random_square_cut_and_affine(images, square_size, angle = None, margin = Non
     H, W = images[0].shape[:2]
     
     if angle is None:
-        angle = np.random.uniform(-5,5)  # 
+        angle = np.random.uniform(-5,5)  
     theta = np.deg2rad(angle)
     if margin is None:
         margin = int((np.abs(np.sin(theta)) + np.abs(np.cos(theta)))*square_size / 2) + 1
     center_x = np.random.uniform(margin + 1, W - margin - 1)
     center_y = np.random.uniform(margin + 1, H - margin - 1)
-    # crop_upperleft = np.array([center_x - square_size / 2,center_y - square_size / 2],dtype=int)
     new_points = np.array([[-square_size / 2, -square_size / 2],
                         [ -square_size / 2, square_size / 2],
                         [ square_size / 2,  square_size / 2],
@@ -103,28 +83,15 @@ def estimate_affine_ransac(A, B, iterations=1000, threshold=0.1, whole=False, hp
     best_affine_matrix = None
 
     def estimate_affine_transformation(A, B):
-        # 
         A_centered = A - np.mean(A, axis=0)
         B_centered = B - np.mean(B, axis=0)
-
-        # 
         H = A_centered.T @ B_centered
-
-        # 
         U, S, Vt = np.linalg.svd(H)
-
-        # 
         R = Vt.T @ U.T
-
-        # 1
         if np.linalg.det(R) < 0:
             Vt[1, :] *= -1
             R = Vt.T @ U.T
-
-        # 
         t = np.mean(B, axis=0) - R @ np.mean(A, axis=0)
-
-        # 
         affine_matrix = np.eye(3)
         affine_matrix[:2, :2] = R
         affine_matrix[:2, 2] = t
@@ -132,28 +99,18 @@ def estimate_affine_ransac(A, B, iterations=1000, threshold=0.1, whole=False, hp
         return affine_matrix
 
     for _ in range(iterations):
-        # 
         sample_indices = random.sample(range(len(A)), hp_num)
         A_sample = A[sample_indices]
         B_sample = B[sample_indices]
-
-        # 
         affine_matrix = estimate_affine_transformation(A_sample, B_sample)
-
-        # 
         B_pred = (affine_matrix[:2, :2] @ A.T).T + affine_matrix[:2, 2]
-
-        # 
         distances = np.linalg.norm(B - B_pred, axis=1)
         inliers = distances < threshold
-
-        # 
         if np.sum(inliers) > max_inliers_num:
             max_inliers_num = np.sum(inliers)
             if whole:
                 whole_matrix = estimate_affine_transformation(A[inliers],B[inliers])
                 B_pred = (whole_matrix[:2, :2] @ A.T).T + whole_matrix[:2, 2]
-                # 
                 distances = np.linalg.norm(B - B_pred, axis=1)
                 inliers = distances < threshold
                 if np.sum(inliers) > max_inliers_num:
@@ -166,31 +123,20 @@ def estimate_affine_ransac(A, B, iterations=1000, threshold=0.1, whole=False, hp
 
     return best_affine_matrix[:2,:], max_inliers_num
 
-# def estimate_affine_ransac(points1, points2, threshold = 20):
-#     model_robust, inliers = ransac((points1, points2), 
-#                                 AffineTransform, 
-#                                 min_samples=3, 
-#                                 residual_threshold=threshold, 
-#                                 max_trials=1000)
-    
-#     return model_robust.params[:2,:], len(inliers[inliers]) 
+
 
 def calculate_errors(T_true, T_pred):
-    #  (2x2)   ()
     R_true = T_true[:, :2]
     R_pred = T_pred[:, :2]
     
     t_true = T_true[:, 2]
     t_pred = T_pred[:, 2]
     
-    # （）
     translation_error = np.linalg.norm(t_pred - t_true)
     
-    # 
     theta_true = np.arctan2(R_true[1, 0], R_true[0, 0])
     theta_pred = np.arctan2(R_pred[1, 0], R_pred[0, 0])
     
-    # （）
     rotation_error = np.degrees(np.abs(theta_pred - theta_true))
     
     return rotation_error, translation_error
@@ -245,7 +191,6 @@ def get_coord_mat(H,W,downsample:int = 0):
     return coord_array
 
 def find_grids(quadrilaterals, side_length, offset_x=0.0, offset_y=0., grid_num = -1):
-    # 
     if not isinstance(quadrilaterals, np.ndarray) or quadrilaterals.ndim != 3 or quadrilaterals.shape[1:] != (4, 2):
         raise ValueError("'quadrilaterals' (N, 4, 2) Numpy。")
     if not isinstance(side_length, (int, float)) or side_length <= 0:
@@ -254,22 +199,12 @@ def find_grids(quadrilaterals, side_length, offset_x=0.0, offset_y=0., grid_num 
         return np.empty((0, 2, 2)), None
 
     def _order_points_for_polygon(points):
-        # 1. 
         centroid = np.mean(points, axis=0)
-        
-        # 2. 
         angles = [math.atan2(p[1] - centroid[1], p[0] - centroid[0]) for p in points]
-        
-        # 3. 
         sorted_points = sorted(zip(points, angles), key=lambda item: item[1])
-        
-        # 
         return np.array([p for p, a in sorted_points])
 
-    # ---  1: NumpyShapely ---
     try:
-        # ：，，。
-        # .buffer(0) ，。
         polygons = [Polygon(_order_points_for_polygon(q)).buffer(0) for q in quadrilaterals]
         polygons = [p for p in polygons if not p.is_empty]
         if not polygons:
@@ -277,7 +212,6 @@ def find_grids(quadrilaterals, side_length, offset_x=0.0, offset_y=0., grid_num 
     except Exception as e:
         raise ValueError(f": {e}")
 
-    # ---  2:  ---
     intersection_area = polygons[0]
     for i in range(1, len(polygons)):
         intersection_area = intersection_area.intersection(polygons[i])
@@ -286,8 +220,6 @@ def find_grids(quadrilaterals, side_length, offset_x=0.0, offset_y=0., grid_num 
 
     if intersection_area.is_empty:
         return np.empty((0, 2, 2)), intersection_area
-
-    # ---  3 & 4:  ---
     found_squares_coords = []
     minx, miny, maxx, maxy = intersection_area.bounds
 
@@ -295,7 +227,6 @@ def find_grids(quadrilaterals, side_length, offset_x=0.0, offset_y=0., grid_num 
     while x + side_length <= maxx:
         y = miny
         while y + side_length <= maxy:
-            # ---  5:  ---
             square_poly = Polygon([
                 (x, y),
                 (x + side_length, y),
@@ -304,7 +235,6 @@ def find_grids(quadrilaterals, side_length, offset_x=0.0, offset_y=0., grid_num 
             ])
 
             if intersection_area.contains(square_poly):
-                # 。，
                 top_left_offset = [x + offset_x, y + side_length + offset_y]
                 bottom_right_offset = [x + side_length + offset_x, y + offset_y]
                 found_squares_coords.append([top_left_offset, bottom_right_offset])
@@ -386,34 +316,17 @@ def proj2photo(proj_coord:torch.Tensor,dem:torch.Tensor,rpc:RPCModelParameterTor
     return photo_coord
 
 def bilinear_interpolate(array, points, use_cuda=False,device = None):
-    """
-    ， CPU (NumPy)  GPU (PyTorch) 。
-
-    :
-    - array:  (H, W)  (H, W, C)  numpy  torch 。
-    - points: (N, 2) ， [x, y]。
-    - use_cuda:。 True， GPU (CUDA) 。
-
-    :
-    - ， (N,)  (N, C)  numpy 。
-    """
     if device is None:
         device = 'cuda'
     # ----------- GPU (CUDA)  -----------
     if use_cuda:
-        #  CUDA ， CPU
         if not torch.cuda.is_available():
             print("：CUDA 。 CPU (NumPy) 。")
             use_cuda = False
         else:
             device = torch.device(device)
-            
-            #  PyTorch  GPU
-            #  torch.as_tensor 
             arr_tensor = torch.as_tensor(array, dtype=torch.float32, device=device)
             pts_tensor = torch.as_tensor(points, dtype=torch.float32, device=device)
-            
-            #  (H, W, 1) 
             if arr_tensor.dim() == 2:
                 arr_tensor = arr_tensor.unsqueeze(-1)
             
@@ -421,25 +334,18 @@ def bilinear_interpolate(array, points, use_cuda=False,device = None):
             x = pts_tensor[:, 0]
             y = pts_tensor[:, 1]
             
-            # 
-            # torch.floor ，
             x0 = torch.floor(x).long()
             y0 = torch.floor(y).long()
-            
-            #  torch.clamp ， np.clip
             x1 = torch.clamp(x0 + 1, 0, W - 1)
             x0 = torch.clamp(x0, 0, W - 1)
             y1 = torch.clamp(y0 + 1, 0, H - 1)
             y0 = torch.clamp(y0, 0, H - 1)
             
-            # ， (N, C)
-            # PyTorch  NumPy 
             Ia = arr_tensor[y0, x0, :]
             Ib = arr_tensor[y1, x0, :]
             Ic = arr_tensor[y0, x1, :]
             Id = arr_tensor[y1, x1, :]
             
-            #  (dx, dy )
             dx = x - x0.float()
             dy = y - y0.float()
             
@@ -447,9 +353,7 @@ def bilinear_interpolate(array, points, use_cuda=False,device = None):
             wb = (1 - dx) * dy
             wc = dx * (1 - dy)
             wd = dx * dy
-            
-            #  ( unsqueeze(1) )
-            # wa[:, None]  PyTorch  wa.unsqueeze(1)
+
             result_tensor = (
                 wa.unsqueeze(1) * Ia +
                 wb.unsqueeze(1) * Ib +
@@ -457,19 +361,16 @@ def bilinear_interpolate(array, points, use_cuda=False,device = None):
                 wd.unsqueeze(1) * Id
             )
             
-            # 
+
             if arr_tensor.shape[-1] == 1 and arr_tensor.dim() == 3:
                 result_tensor = result_tensor.squeeze(axis=1)
                 
-            #  GPU  CPU  NumPy 
             return result_tensor.cpu().numpy()
 
     # ----------- CPU (NumPy)  -----------
-    #  use_cuda  False，
     array = np.asarray(array)
     points = np.asarray(points)
     
-    # 
     original_ndim = array.ndim
     
     if array.ndim == 2:
@@ -517,82 +418,39 @@ def downsample_average(
     use_cuda: bool = False,
     device = 'cuda'
 ) -> torch.Tensor:
-    """
-    。
-
-     (H, W)  (H, W, C)  PyTorch ，
-     (downsample_factor x downsample_factor) 
-     downsample_factor ，
-    。
-
-    Args:
-        input_tensor (torch.Tensor): ， (H, W) []
-                                      (H, W, C) []。
-        downsample_factor (int): ，。，8 
-                                  8x8 8。
-        use_cuda (bool, optional):  True， CUDA GPU 。
-                                    CUDA ， CPU。
-                                    False。
-
-    Returns:
-        torch.Tensor: 。
-                       (H, W)， (H/factor, W/factor)。
-                       (H, W, C)， (H/factor, W/factor, C)。
-                      （CPU  CUDA）。
-
-    Raises:
-        ValueError:  2  3。
-        TypeError:  torch.Tensor。
-    """
     if not isinstance(input_tensor, torch.Tensor):
-        raise TypeError(f" torch.Tensor， {type(input_tensor)}")
+        raise TypeError(f" torch.Tensor, {type(input_tensor)}")
 
     # --- 1.  (CPU or CUDA) ---
     if use_cuda:
         if torch.cuda.is_available():
             device = torch.device(device)
-            # print("CUDA is available. Using GPU for acceleration.")
         else:
             device = torch.device('cpu')
-            print(":  CUDA， CUDA 。 CPU。")
+            print(":  CUDA, CUDA 。 CPU。")
     else:
         device = torch.device('cpu')
 
-    # 
     input_tensor = input_tensor.to(device)
 
-    # --- 2. ： PyTorch  (N, C, H, W) ---
-    # PyTorch  2D /4D：(, , , )
     input_dim = input_tensor.dim()
     if input_dim == 2:  #  (H, W)
         is_grayscale = True
-        #  (1, 1, H, W)
         tensor_in = input_tensor.unsqueeze(0).unsqueeze(0)
     elif input_dim == 3:  #  (H, W, C)
         is_grayscale = False
-        # PyTorch  "channels-first" (C, H, W) ，
-        # (H, W, C) -> (C, H, W)， (1, C, H, W)
         tensor_in = input_tensor.permute(2, 0, 1).unsqueeze(0)
     else:
-        raise ValueError(f" 2 (H,W)  3 (H,W,C)， {input_dim}")
+        raise ValueError(f" 2 (H,W)  3 (H,W,C), {input_dim}")
 
-    # ，
     tensor_in = tensor_in.float()
 
-    # --- 3.  ---
-    #  AvgPool2d 
-    # kernel_size 
-    # stride 
-    #  kernel_size  stride ，
     pool = nn.AvgPool2d(kernel_size=downsample_factor, stride=downsample_factor).to(device)
     downsampled_tensor = pool(tensor_in)
 
-    # --- 4. ： ---
     if is_grayscale:
-        # (1, 1, H', W') -> (H', W')
         output_tensor = downsampled_tensor.squeeze(0).squeeze(0)
     else:
-        # (1, C, H', W') -> (C, H', W') -> (H', W', C)
         output_tensor = downsampled_tensor.squeeze(0).permute(1, 2, 0)
 
     return output_tensor.cpu()
@@ -603,8 +461,6 @@ def downsample(arr:torch.Tensor,ds,use_cuda=False,show_detail=False,mode='mid',d
     """
     if ds <= 0:
         return arr
-    # if len(arr.shape) < 4:
-    #     arr = arr.unsqueeze(-1)
     arr_ds = []
     if show_detail:
         pbar = tqdm(total = len(arr))
@@ -631,25 +487,10 @@ def downsample(arr:torch.Tensor,ds,use_cuda=False,show_detail=False,mode='mid',d
     return arr_ds
 
 def print_hwc_matrix(matrix: np.ndarray, precision:int = 2):
-    """
-     (H, W, C)  NumPy  H*W 。
-    。
-
-    Args:
-        matrix (np.ndarray):  NumPy ， (H, W, C)。
-        precision (Optional[int], optional): 
-            ，。
-             None，。 None。
-    """
-    #  NumPy 
     if not isinstance(matrix, np.ndarray) or matrix.ndim != 3:
         print("： NumPy  (H, W, C)。")
         return
-
-    # 
     H, W, C = matrix.shape
-
-    # ，
     if H == 0 or W == 0:
         print("[]")
         return
@@ -661,30 +502,22 @@ def print_hwc_matrix(matrix: np.ndarray, precision:int = 2):
             vector = matrix[h, w]
             string_element = ""
             if precision is not None:
-                # ，
                 try:
-                    #  f-string 
                     formatted_numbers = [f"{num:.{precision}f}" for num in vector]
                     string_element = f"[{' '.join(formatted_numbers)}]"
                 except (ValueError, TypeError):
-                    # （，），
                     string_element = str(vector)
             else:
-                # ， NumPy 
                 string_element = str(vector)
             
             row_elements.append(string_element)
         string_elements.append(row_elements)
 
-    # ，
     max_len = max([len(s) for row in string_elements for s in row] or [0])
-
-    # 
     print("┌" + "─" * (W * (max_len + 2) - 2) + "┐")
     for row in string_elements:
         print("│", end="")
         for element in row:
-            #  ljust ，
             print(f"{element:<{max_len}}", end="  ")
         print("│")
     print("└" + "─" * (W * (max_len + 2) - 2) + "┘")
@@ -713,7 +546,7 @@ def resample_from_quad(
     border_mode: int = cv2.BORDER_REPLICATE
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    ，。
+    ,。
     “”“”。
 
     Args:
@@ -727,8 +560,6 @@ def resample_from_quad(
     Returns:
         tuple[np.ndarray, np.ndarray]: 。
     """
-    # 1.  ()
-    # ... (，)
     if source_image.ndim not in [2, 3]:
         raise ValueError(" ()  (RGB/BGR) 。")
     if quad_coords.shape != (4, 2):
@@ -746,10 +577,9 @@ def resample_from_quad(
     try:
         M_inv = np.linalg.inv(M)
     except np.linalg.LinAlgError:
-        print(":  M ，。")
+        print(":  M ,。")
         return None, None
 
-    # 2.  ()
     if source_image.ndim == 3:
         output_channels = source_image.shape[2]
         resampled_image = np.zeros((h, w, output_channels), dtype=source_image.dtype)
@@ -758,52 +588,39 @@ def resample_from_quad(
     
     coordinate_map = np.zeros((h, w, 2), dtype=np.float32)
 
-    # 3. 
     for y_start in range(0, h, tile_size):
         for x_start in range(0, w, tile_size):
             tile_h = min(tile_size, h - y_start)
             tile_w = min(tile_size, w - x_start)
-            
-            # a. 
+
             y_grid, x_grid = np.mgrid[y_start : y_start + tile_h, x_start : x_start + tile_w]
             target_coords_homo = np.stack((x_grid.ravel(), y_grid.ravel(), np.ones(tile_h * tile_w)), axis=1)
             source_coords_homo = target_coords_homo @ M_inv.T
             w_inv = 1.0 / (source_coords_homo[:, 2] + 1e-9)
             source_coords_xy = source_coords_homo[:, :2] * w_inv[:, np.newaxis]
             
-            # b.  (Bounding Box)
-            # map1  x  (col), map2  y  (row)
             map1 = source_coords_xy[:, 0]
             map2 = source_coords_xy[:, 1]
             
-            #  padding，
             padding = 2 
             src_x_min = max(0, int(np.floor(map1.min())) - padding)
             src_x_max = min(src_w, int(np.ceil(map1.max())) + padding)
             src_y_min = max(0, int(np.floor(map2.min())) - padding)
             src_y_max = min(src_h, int(np.ceil(map2.max())) + padding)
 
-            # ，
             if src_x_min >= src_w or src_x_max <= 0 or src_y_min >= src_h or src_y_max <= 0:
                 continue
-
-            # c. ROI
             source_roi = source_image[src_y_min:src_y_max, src_x_min:src_x_max]
-            
-            #  ROI 
             adjusted_map1 = (map1 - src_x_min).reshape(tile_h, tile_w).astype(np.float32)
             adjusted_map2 = (map2 - src_y_min).reshape(tile_h, tile_w).astype(np.float32)
-
-            # d.  ROI  map  remap
             resampled_tile = cv2.remap(
-                source_roi,         #  
-                adjusted_map1,      #  
-                adjusted_map2,      #  
+                source_roi,       
+                adjusted_map1,     
+                adjusted_map2,     
                 interpolation=interpolation,
                 borderMode=border_mode
             )
             
-            # e. 
             resampled_image[y_start:y_start+tile_h, x_start:x_start+tile_w] = resampled_tile
             coordinate_map[y_start:y_start+tile_h, x_start:x_start+tile_w, 0] = map2.reshape(tile_h, tile_w)
             coordinate_map[y_start:y_start+tile_h, x_start:x_start+tile_w, 1] = map1.reshape(tile_h, tile_w)
@@ -827,17 +644,12 @@ def vis_feat_pca(feat:np.ndarray,output_path = None):
 
 def vis_feat_twin(feat1,feat2):
     H,W,C = feat1.shape
-    # feat1 = feat1.permute(1,2,0).flatten(0,1).cpu().numpy()
-    # feat2 = feat2.permute(1,2,0).flatten(0,1).cpu().numpy()
     feat1 = feat1.reshape(-1,C)
     feat2 = feat2.reshape(-1,C)
     feat = np.concatenate([feat1,feat2],axis=0)
-    # tsne = TSNE(n_components=3, random_state=42,metric='cosine')
-    # feat = tsne.fit_transform(feat)
     pca = PCA(n_components=3)
     
     feat = pca.fit_transform(feat)
-    # feat = feat[:,:3]
     feat = (feat - feat.min()) / (feat.max() - feat.min())
     feat1 = feat[:H*W]
     feat2 = feat[H*W:]
@@ -845,17 +657,16 @@ def vis_feat_twin(feat1,feat2):
     feat2 = feat2.reshape(H,W,3)
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
 
-    # 
+
     ax1.imshow(feat1)
-    ax1.axis('off')  # 
+    ax1.axis('off') 
     ax1.set_title('Image 1')
 
-    # 
+
     ax2.imshow(feat2)
-    ax2.axis('off')  # 
+    ax2.axis('off') 
     ax2.set_title('Image 2')
 
-    # 
     plt.tight_layout()
     fig.canvas.draw()
     width, height = fig.canvas.get_width_height()
@@ -897,14 +708,12 @@ def vis_conf(conf:np.ndarray,img:np.ndarray,ds,div = .5,output_path = None):
         return canvas_cont,canvas_div
 
 def visualize_subset_points(points1, points2, output_path, padding=50, point_radius=5):
-    # ，
     all_points = np.vstack((points1, points2)) if points1.size > 0 and points2.size > 0 else \
                 points1 if points1.size > 0 else points2
 
     min_x = np.min(all_points[:, 0])
     min_y = np.min(all_points[:, 1])
 
-    #  x  y 
     max_x = np.max(all_points[:, 0]) - min_x
     max_y = np.max(all_points[:, 1]) - min_y
 
@@ -913,35 +722,22 @@ def visualize_subset_points(points1, points2, output_path, padding=50, point_rad
     points2[:,0] -= min_x
     points2[:,1] -= min_y
     
-    
-
-    # 
     canvas_width = int(max_x + padding * 2)
     canvas_height = int(max_y + padding * 2)
 
-    #  (BGR )
-    # np.ones ， 255， uint8 
     canvas = np.ones((canvas_height, canvas_width, 3), dtype=np.uint8) * 255
 
-    #  (OpenCV  BGR )
     green_color = (0, 255, 0)
     red_color = (0, 0, 255)
 
-    # （）
     for point in points2:
-        # ，
         center = (int(point[1]) + padding, int(point[0]) + padding)
         cv2.circle(canvas, center, point_radius, red_color, thickness=-1)
 
-    # （）
     for point in points1:
-        # ，
         center = (int(point[1]) + padding, int(point[0]) + padding)
-        cv2.circle(canvas, center, point_radius, green_color, thickness=-1) # thickness=-1 
+        cv2.circle(canvas, center, point_radius, green_color, thickness=-1)
 
-    
-
-    # 
     cv2.imwrite(output_path, canvas)
 
 def visualize_feature_correspondences(
@@ -951,31 +747,15 @@ def visualize_feature_correspondences(
     points2: np.ndarray,
     draw_lines: bool = True
 ) -> np.ndarray:
-    """
-    。
 
-    PCARGB，。
-    ，。
-
-    Args:
-        feature_map1 (np.ndarray): ， (H, W, D)。
-        feature_map2 (np.ndarray): ， (H, W, D)。
-        points1 (np.ndarray): ， (N, 2)， (x, y)。
-        points2 (np.ndarray): ， (N, 2)， (x, y)。
-        draw_lines (bool): ， True。
-
-    Returns:
-        np.ndarray: RGBNumPy。
-    """
-    # --- 1.  ---
     if not (isinstance(feature_map1, np.ndarray) and isinstance(feature_map2, np.ndarray) and
             isinstance(points1, np.ndarray) and isinstance(points2, np.ndarray)):
         raise TypeError("NumPy。")
         
     if feature_map1.shape[:2] != feature_map2.shape[:2]:
-        raise ValueError("（H）（W）。")
+        raise ValueError("(H)(W)。")
     if feature_map1.shape[2] != feature_map2.shape[2]:
-        raise ValueError("（D）。")
+        raise ValueError("(D)。")
     if points1.shape != points2.shape:
         raise ValueError("。")
     if points1.ndim != 2 or points1.shape[1] != 2:
@@ -983,69 +763,45 @@ def visualize_feature_correspondences(
 
     H, W, D = feature_map1.shape
     N = points1.shape[0]
-
-    # --- 2. PCA ---
-    # ，PCA
     fm1_reshaped = feature_map1.reshape((H * W, D))
     fm2_reshaped = feature_map2.reshape((H * W, D))
     all_features = np.concatenate([fm1_reshaped, fm2_reshaped], axis=0)
 
-    # PCA3
     pca = PCA(n_components=3)
     features_pca = pca.fit_transform(all_features)
-
-    # # MinMaxScalerPCA[0, 1]，RGB
-    # scaler = MinMaxScaler(feature_range=(1e-6, 1. - 1e-6))
-    # features_normalized = scaler.fit_transform(features_pca)
     features_normalized = (features_pca - features_pca.min()) / (features_pca.max() - features_pca.min() + 1e-9)
 
-    # RGB
     img1_rgb = features_normalized[:H * W, :].reshape((H, W, 3))
     img2_rgb = features_normalized[H * W:, :].reshape((H, W, 3))
 
-    # --- 3. Matplotlib ---
-    # 
     fig_w = 12
     fig_h = fig_w * H / (W * 2) if W > 0 else 6
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(fig_w, fig_h), dpi=150)
     fig.tight_layout(pad=3.0)
 
-    # 
     ax1.imshow(img1_rgb)
     ax1.axis('off')
 
     ax2.imshow(img2_rgb)
     ax2.axis('off')
 
-    # --- 4.  ---
-    if N > 0:
-        # ****:
-        # 1. RGB，
-        # 2. (jet)，，
 
-        # 
-        # ：numpy(, )，(y, x)
+    if N > 0:
         points1_idx = np.round(points1).astype(int)
         points2_idx = np.round(points2).astype(int)
         
-        # 
         points1_idx[:, 0] = np.clip(points1_idx[:, 0], 0, W - 1)
         points1_idx[:, 1] = np.clip(points1_idx[:, 1], 0, H - 1)
         points2_idx[:, 0] = np.clip(points2_idx[:, 0], 0, W - 1)
         points2_idx[:, 1] = np.clip(points2_idx[:, 1], 0, H - 1)
 
-        # RGB
         point_colors1 = img1_rgb[points1_idx[:, 1], points1_idx[:, 0]]
         point_colors2 = img2_rgb[points2_idx[:, 1], points2_idx[:, 0]]
-        
-        # ，
-        # s, edgecolor
+
         ax1.scatter(points1[:, 0], points1[:, 1], c=point_colors1, s=25, edgecolor='white', linewidth=1.0, zorder=3)
         ax2.scatter(points2[:, 0], points2[:, 1], c=point_colors2, s=25, edgecolor='white', linewidth=1.0, zorder=3)
 
-        # () 
         if draw_lines:
-            #  N ，，
             line_cmap = plt.get_cmap('jet')
             line_colors = line_cmap(np.linspace(0, 1, N))
             for i in range(N):
@@ -1058,26 +814,23 @@ def visualize_feature_correspondences(
                 )
                 fig.add_artist(con)
 
-    # --- 5. NumPy ---
     fig.canvas.draw()
-    # bufferRGB
     width, height = fig.canvas.get_width_height()
     img_array = np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8).reshape((height, width, 4))[:,:,1:]
 
-    # ，Jupyter
     plt.close(fig)
 
     return img_array
 
 def visualize_obj_error(obj_P2: np.ndarray, pred_P2: np.ndarray, canvas_size: tuple = (800, 800), sample_k: int = 1000, ranges = None):
     """
-    ，。
+    ,。
 
     Args:
         obj_P2 (np.ndarray): , shape=(N, 2)。
         pred_P2 (np.ndarray): , shape=(N, 2)。
         canvas_size (tuple): 。
-        sample_k (int): ，。
+        sample_k (int): ,。
 
     Returns:
         dict:  (numpy ) 。
@@ -1086,26 +839,21 @@ def visualize_obj_error(obj_P2: np.ndarray, pred_P2: np.ndarray, canvas_size: tu
     def fig_to_numpy(fig: plt.Figure) -> np.ndarray:
         """
          Matplotlib Figure  NumPy 。
-         canvas ，I/O。
+         canvas ,I/O。
         """
-        # 1. （render）
         fig.canvas.draw()
 
         width, height = fig.canvas.get_width_height()
         img_array = np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8).reshape((height, width, 4))[:,:,1:]
         return img_array
 
-    # ，
     num_points = obj_P2.shape[0]
     if num_points > sample_k:
         indices = np.random.choice(num_points, sample_k, replace=False)
         obj_P2 = obj_P2[indices]
         pred_P2 = pred_P2[indices]
 
-    # ---  ---
-    # 
     error_vectors = pred_P2 - obj_P2
-    # （）
     error_magnitudes = np.linalg.norm(error_vectors, axis=1)
 
     if ranges is None:
@@ -1113,11 +861,9 @@ def visualize_obj_error(obj_P2: np.ndarray, pred_P2: np.ndarray, canvas_size: tu
         min_coords = all_points.min(axis=0)
         max_coords = all_points.max(axis=0)
         range_coords = max_coords - min_coords
-        
-        # 0
+
         range_coords[range_coords == 0] = 1
 
-        # 
         obj_scaled = (obj_P2 - min_coords) / range_coords * np.array([canvas_size[1], canvas_size[0]]) * 0.9 + 0.05 * np.array([canvas_size[1], canvas_size[0]])
         pred_scaled = (pred_P2 - min_coords) / range_coords * np.array([canvas_size[1], canvas_size[0]]) * 0.9 + 0.05 * np.array([canvas_size[1], canvas_size[0]])
     else:

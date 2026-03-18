@@ -62,11 +62,6 @@ def sample_features(features: torch.Tensor, coords: torch.Tensor) -> torch.Tenso
     return final_output
 
 def warp_by_poly(raw,coefs):
-    # raw[:,0] = .5 * (raw[:,0] + 1.) * (bbox['x_max'] - bbox['x_min']) + bbox['x_min']
-    # raw[:,1] = .5 * (raw[:,1] + 1.) * (bbox['y_max'] - bbox['y_min']) + bbox['y_min']
-    # raw[:,2] = .5 * (raw[:,2] + 1.) * (bbox['h_max'] - bbox['h_min']) + bbox['h_min']
-    # x = apply_polynomial(raw[:,0],coefs['x'])
-    # y = apply_polynomial(raw[:,1],coefs['y'])
     x = (raw[:,0] + 1.) * .5 * (coefs['x'][1] - coefs['x'][0]) + coefs['x'][0]
     y = (raw[:,1] + 1.) * .5 * (coefs['y'][1] - coefs['y'][0]) + coefs['y'][0]
     h = apply_polynomial(raw[:,2],coefs['h'])
@@ -86,10 +81,9 @@ def output_img(imgs_raw:torch.Tensor,output_path:str,name:str):
 
 @torch.no_grad()
 def vis(encoder:EncoderDino,vis_img:np.ndarray):
-    # os.makedirs(output_folder,exist_ok=True)
     transform = transforms.Compose([
                 transforms.ToTensor(),
-                transforms.Normalize((0.430, 0.411, 0.296), (0.213, 0.156, 0.143)) # (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
+                transforms.Normalize((0.430, 0.411, 0.296), (0.213, 0.156, 0.143))
                 ])
     input = transform(vis_img).unsqueeze(0).to(encoder.device)
     feat,conf = encoder(input)
@@ -119,26 +113,16 @@ def compute_loss(args,epoch,data,encoder:EncoderDino,decoder:DecoderFinetune,cri
 
     size = feat1.shape[2]
 
-    # print(feat1.shape,conf1.shape,residual1.shape,obj1.shape,overlap1.shape)
 
-    feat1_sample = sample_features(feat1,overlap1).unsqueeze(-1) # B,D,N,1
+    feat1_sample = sample_features(feat1,overlap1).unsqueeze(-1)
     feat2_sample = sample_features(feat2,overlap2).unsqueeze(-1)
     obj1_sample_P3 = sample_features(obj1.permute(0,3,1,2),overlap1).permute(0,2,1).flatten(0,1)
     obj2_sample_P3 = sample_features(obj2.permute(0,3,1,2),overlap2).permute(0,2,1).flatten(0,1)
 
-    # project_feat1 = projector(feat1_sample)
-    # project_feat2 = projector(feat2_sample)
 
-    # feat_noise_amp1 = torch.rand(feat1.shape[0],1,feat1.shape[2],feat1.shape[3]).to(args.device) * .3
-    # feat_noise_amp2 = torch.rand(feat2.shape[0],1,feat2.shape[2],feat2.shape[3]).to(args.device) * .3
-    # feat_noise1 = F.normalize(torch.normal(mean=0.,std=feat1.std().item(),size=feat1.shape),dim=1).to(args.device) * feat_noise_amp1
-    # feat_noise2 = F.normalize(torch.normal(mean=0.,std=feat2.std().item(),size=feat2.shape),dim=1).to(args.device) * feat_noise_amp2
+    feat_input1 = feat1
+    feat_input2 = feat2
 
-
-    feat_input1 = feat1 #+ feat_noise1
-    feat_input2 = feat2 #+ feat_noise2
-    # feat_input1 = feat1
-    # feat_input2 = feat2
 
     output1_B3hw = decoder(feat_input1)
     output2_B3hw = decoder(feat_input2)
@@ -147,10 +131,6 @@ def compute_loss(args,epoch,data,encoder:EncoderDino,decoder:DecoderFinetune,cri
     pred1_P3 = warp_by_poly(output1_P3,obj_map_coef)
     pred2_P3 = warp_by_poly(output2_P3,obj_map_coef)
 
-    # decoder_freeze = deepcopy(decoder)
-    # for params in decoder_freeze.parameters():
-    #     params.rfreezeequires_grad_ = False
-    # decoder_freeze.eval()
     output1_sample_B3hw = decoder(feat1_sample)
     output2_sample_B3hw = decoder(feat2_sample)
     output1_sample_P3 = output1_sample_B3hw.permute(0,2,3,1).flatten(0,2)
@@ -180,15 +160,11 @@ def compute_loss(args,epoch,data,encoder:EncoderDino,decoder:DecoderFinetune,cri
                                                                 only_decoder,
                                                                 H,W)
     feat_dis = torch.norm(feat1_sample.permute(0,2,3,1).flatten(0,2) - feat2_sample.permute(0,2,3,1).flatten(0,2),dim=1).mean().detach() * 100.
-    # sample_dis_1 = pred1_sample_P3 - obj1_sample_P3
-    # sample_dis_2 = pred2_sample_P3 - obj2_sample_P3
-    # obj_dis = torch.norm(obj1_sample_P3 - obj2_sample_P3,dim=-1).detach()
-    # print(f"obj dis: {obj_dis.mean().item()} \t {obj_dis.median().item()} \t {obj_dis.min().item()} \t {obj_dis.max().item()} \n")
-    # loss_dis = torch.norm(sample_dis_1 - sample_dis_2,dim=-1).mean() #torch.norm(pred1_sample_P3 - pred2_sample_P3,dim=-1).mean()
+
     loss_dis = torch.norm(pred1_sample_P3 - pred2_sample_P3,dim=-1).mean()
     loss_obj_sample = .5 * torch.norm(pred1_sample_P3 - obj1_sample_P3,dim=-1).mean() + .5 * torch.norm(pred2_sample_P3 - obj2_sample_P3,dim=-1).mean()
     if not only_decoder:
-        loss = loss + loss_dis + loss_obj_sample              # * (.5 + .5 * epoch / args.max_epoch)
+        loss = loss + loss_dis + loss_obj_sample            
     else:
         loss = loss + loss_dis * 0.  + loss_obj_sample * 0.
     
@@ -230,7 +206,6 @@ def pretrain(args):
         obj_map_coefs = [{k:v.numpy() for k,v in i.items()} for i in obj_map_coefs]
         log_name = training_configs['log_name']
         if rank == 0:
-            # logger = TableLogger('./log',['epoch','loss','loss_obj','loss_height','loss_conf','loss_feat','loss_dis','k','lr_encoder','lr_decoder'],name = log_name)
             logger = SummaryWriter(log_dir=os.path.join('./log',f'{log_name}_tensorboard'))
         else:
             logger = None
@@ -242,7 +217,6 @@ def pretrain(args):
         obj_map_coefs = None
         log_name = args.log_prefix
         if rank == 0:
-            # logger = TableLogger('./log',['epoch','loss','loss_obj','loss_height','loss_conf','loss_feat','loss_dis','k','lr_encoder','lr_decoder'],prefix = f'{args.log_prefix}_finetune_log')
             logger = SummaryWriter(log_dir=os.path.join('./log',f'{args.log_prefix}_tensorboard'))
         else:
             logger = None
@@ -298,27 +272,16 @@ def pretrain(args):
 
     pprint("Building Encoder")
 
-    # args.unfreeze_backbone_layers = [int(i) for i in args.unfreeze_backbone_layers.split(',') if i.isdigit() and 0 <= int(i) <= 23]
     
     only_decoder_epoch = int(args.max_epoch * args.only_decoder_ratio)
     
-
-    # if args.resume_training:
-    #     encoder = EncoderDino(dino_weight_path=os.path.join(args.checkpoints_path,'dinov3_vitl16_pretrain_sat493m-eadcf0ff.pth'))
-    # else:
     encoder = EncoderDino(dino_weight_path=args.dino_weight_path,adapter_pos_embed = args.pos_embed,unitize=True)
     adapter_optimizer = optim.AdamW(params=encoder.adapter.parameters(),lr = args.lr_encoder_max)
-    # backbone_optimizer = optim.AdamW(params=encoder.unfreeze_backbone(layers=args.unfreeze_backbone_layers),lr = args.lr_encoder_max * 0.1)
 
     adapter_scheduler = MultiStageOneCycleLR(optimizer=adapter_optimizer,
                                              total_steps=(args.max_epoch - only_decoder_epoch) * dataset_num,
                                              warmup_ratio=min(5. / args.max_epoch,.1),
                                              cooldown_ratio=.9)
-    
-    # backbone_scheduler = MultiStageOneCycleLR(optimizer=backbone_optimizer,
-    #                                           total_steps=args.max_epoch - only_decoder_epoch,
-    #                                           warmup_ratio=min(100. / args.max_epoch,.1),
-    #                                           cooldown_ratio=.7)
 
 
     args.output_channels = encoder.output_channels
@@ -326,31 +289,23 @@ def pretrain(args):
     
     if args.resume_training:
         encoder.load_adapter(os.path.join(args.checkpoints_path,'adapter.pth'))
-        # projector.load_state_dict({k.replace("module.",""):v for k,v in torch.load(os.path.join(args.checkpoints_path,'projector.pth'),map_location='cpu').items()})
         adapter_optimizer.load_state_dict(torch.load(os.path.join(args.checkpoints_path,'adapter_optimizer.pth'),map_location='cpu'))
         adapter_scheduler.load_state_dict(torch.load(os.path.join(args.checkpoints_path,'adapter_scheduler.pth'),map_location='cpu'))
-        # backbone_optimizer.load_state_dict(torch.load(os.path.join(args.checkpoints_path,'backbone_optimizer.pth'),map_location='cpu'))
-        # backbone_scheduler.load_state_dict(torch.load(os.path.join(args.checkpoints_path,'backbone_scheduler.pth'),map_location='cpu'))
         
     elif not args.encoder_path is None:
         encoder.load_adapter(os.path.join(args.encoder_path,'adapter.pth'))
         pprint('Encoder Loaded')
 
     encoder = encoder.to(args.device)
-    # projector = projector.to(args.device)
     for state in adapter_optimizer.state.values():
         for k, v in state.items():
             if isinstance(v, torch.Tensor):
                 state[k] = v.to(args.device)
-    # for state in backbone_optimizer.state.values():
-    #     for k, v in state.items():
-    #         if isinstance(v, torch.Tensor):
-    #             state[k] = v.to(args.device)
+
 
     encoder_op = encoder
     if num_gpus > 1:
         encoder = distibute_model(encoder,args.local_rank)
-        # projector = distibute_model(projector,args.local_rank)
         encoder_op = encoder.module
     
 
@@ -384,9 +339,6 @@ def pretrain(args):
             decoder = distibute_model(decoder,args.local_rank)
 
         decoder.train()
-
-        # elif not args.decoder_path is None and os.path.exists(os.path.join(args.decoder_path,f'decoder_{dataset_idx}.pth')):
-        #     decoder.load_state_dict({k.replace("module.",""):v for k,v in torch.load(os.path.join(args.encoder_path,f'decoder_{dataset_idx}.pth')).items()})
         
         optimizers.append(optimizer)
         schedulers.append(scheduler)
@@ -396,11 +348,9 @@ def pretrain(args):
     start_time = time.perf_counter()
     criterion = CriterionFinetune()
     step_count = 0
-    # torch.autograd.set_detect_anomaly(True)
     for epoch in range(epoch,args.max_epoch):
         pprint(f'\nEpoch:{epoch}')
         sampler.set_epoch(epoch)
-        # valid(epoch)
         total_loss = 0
         total_loss_obj = 0
         total_loss_dis = 0
@@ -417,14 +367,11 @@ def pretrain(args):
         for iter_idx,data in enumerate(dataloader):
             img1,img2,obj1,obj2,residual1,residual2,overlap1,overlap2,dataset_idx = data
             dataset_idx = dataset_idx.item()
-            # output_img(img1[0],'./img_check',f'epoch_{epoch}_img1_rank_{rank}_idx_{dataset_idx}')
-            # output_img(img2[0],'./img_check',f'epoch_{epoch}_img2_rank_{rank}_idx_{dataset_idx}')
 
             decoder = decoders[dataset_idx]
             decoder_optimizer = optimizers[dataset_idx]
             decoder.train()
             adapter_optimizer.zero_grad()
-            # backbone_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
             
             compose_data = {
@@ -442,8 +389,6 @@ def pretrain(args):
 
             loss,loss_obj,loss_height,loss_relative,loss_conf,loss_feat,loss_dis,loss_obj_sample,k,conf_mean,feat_dis,sp,sn,vis_data = compute_loss(args,epoch,compose_data,encoder,decoder,criterion,epoch < only_decoder_epoch)
 
-            # if rank == 1 and epoch == 1 and iter_idx == 1:
-            #     loss = torch.tensor(torch.nan,device=loss.device)
             
 
             loss_is_nan = not torch.isfinite(loss).all()
@@ -456,21 +401,12 @@ def pretrain(args):
                 pprint(f"---  NaN！Epoch {epoch}, iter {iter_idx+1}, dataset {dataset_idx}. 。---")
                 del loss,loss_obj,loss_height,loss_conf,loss_feat,loss_dis,conf_mean
                 adapter_scheduler.step()
-                # backbone_scheduler.step()
                 continue 
             
             loss.backward()
-            # scaler.scale(loss).backward()
 
-            # adapter_optimizer.step()
             decoder_optimizer.step()
             adapter_optimizer.step()
-            # scaler.step(adapter_optimizer)
-            # for idx in dataset_idxs:
-            #     scaler.step(optimizers[idx])
-            # scaler.update()
-
-            # adapter_scheduler.step()
             
             loss_rec = loss.clone().detach()
             loss_obj_rec = loss_obj.clone().detach()
@@ -495,7 +431,6 @@ def pretrain(args):
             total_sn += sn_rec
             count += 1
             step_count += 1
-            # print(f"\n6---------debug:{dist.get_rank()}\n")
 
 
             dist.all_reduce(loss_rec,dist.ReduceOp.AVG)
@@ -524,15 +459,10 @@ def pretrain(args):
 
             if epoch >= only_decoder_epoch:
                 adapter_scheduler.step()
-            # backbone_scheduler.step()
 
-        
-        # backbone_optimizer.step()
-        
         for scheduler in schedulers:
             scheduler.step()            
-        
-        # print(f"\n7---------debug:{dist.get_rank()}\n")
+
         total_loss /= count
         total_loss_obj /= count
         total_loss_dis /= count
@@ -565,7 +495,6 @@ def pretrain(args):
         total_loss_feat = total_loss_feat.item()
         total_sp = total_sp.item()
         total_sn = total_sn.item()
-        # print(f"\n8---------debug:{dist.get_rank()}\n")
 
 
         if dist.get_rank() == 0:
@@ -575,30 +504,19 @@ def pretrain(args):
                 print(f"total_loss:{total_loss} \t diff:{'+' if total_loss - last_loss > 0 else ''}{total_loss - last_loss} \t min_loss:{min_loss} \t obj:{total_loss_obj:.2f} \t obj_s:{total_loss_obj_sample:.2f}  \t dis:{total_loss_dis:.2f} \t rela:{total_loss_relative:.2f} \t height:{total_loss_height:.2f} \t conf:{total_loss_conf:.4f} \t feat:{total_loss_feat:.4f} \t sp:{total_sp:.2f} \t sn:{total_sn:.2f}")
             last_loss = total_loss
 
-            # torch.save(encoder.state_dict(),os.path.join(os.path.join(args.encoder_output_path,f'adapter_{epoch}.pth')))
             
             if total_loss_obj < min_loss and epoch >= only_decoder_epoch + 50:
                 min_loss = total_loss_obj
-                # backbone_state_dict = {k:v.detach().cpu() for k,v in encoder_op.backbone.state_dict().items()}
-                # torch.save(backbone_state_dict,os.path.join(args.encoder_output_path,'dinov3_vitl16_pretrain_sat493m-eadcf0ff.pth'))
                 encoder_op.save_adapter(os.path.join(args.encoder_output_path,'adapter.pth'))
                 print('best updated')
             
             if epoch % 5 == 0:
                 path = args.checkpoints_path
-                # encoder_state_dict = {k:v.detach().cpu() for k,v in encoder.state_dict().items()}
                 adapter_optimizer_state_dict = adapter_optimizer.state_dict()
-                # backbone_optimizer_state_dict = backbone_optimizer.state_dict()
                 adapter_scheduler_state_dict = adapter_scheduler.state_dict()
-                # backbone_scheduler_state_dict = backbone_scheduler.state_dict()
-                # projector_state_dict = projector.state_dict()
                 encoder_op.save_adapter(os.path.join(path,'adapter.pth'))
-                # encoder_op.save_backbone(os.path.join(path,'dinov3_vitl16_pretrain_sat493m-eadcf0ff.pth'))
                 torch.save(adapter_optimizer_state_dict,os.path.join(path,'adapter_optimizer.pth'))
-                # torch.save(backbone_optimizer_state_dict,os.path.join(path,'backbone_optimizer.pth'))
                 torch.save(adapter_scheduler_state_dict,os.path.join(path,'adapter_scheduler.pth'))
-                # torch.save(backbone_scheduler_state_dict,os.path.join(path,'backbone_scheduler.pth'))
-                # torch.save(projector_state_dict,os.path.join(path,'projector.pth'))
                 for i in range(dataset_num):
                     decoder_state_dict = {k:v.detach().cpu() for k,v in decoders[i].state_dict().items()}
                     decoder_optimizer_state_dict = optimizers[i].state_dict()
@@ -607,7 +525,6 @@ def pretrain(args):
                     torch.save(decoder_optimizer_state_dict,os.path.join(path,f'decoder_optimizer_{i}.pth'))
                     torch.save(decoder_scheduler_state_dict,os.path.join(path,f'decoder_scheduler_{i}.pth'))
                 obj_map_coefs_save = [{k:torch.from_numpy(v) for k,v in i.items()} for i in dataset.obj_map_coefs]
-                # print(obj_map_coefs_save[:10])
                 training_configs = {
                     'dataset_indices':torch.from_numpy(dataset_indices),
                     'obj_map_coefs':obj_map_coefs_save,
@@ -631,9 +548,6 @@ def pretrain(args):
                 train_img_1 = 255. * (train_img_1 - train_img_1.min()) / (train_img_1.max() - train_img_1.min())
                 train_img_2 = 255. * (train_img_2 - train_img_2.min()) / (train_img_2.max() - train_img_2.min())
 
-                # train_img_12,train_img_22 = img1[0][1].permute(1,2,0).detach().cpu().numpy(),img2[0][1].permute(1,2,0).detach().cpu().numpy()
-                # train_img_12 = 255. * (train_img_12 - train_img_12.min()) / (train_img_12.max() - train_img_12.min())
-                # train_img_22 = 255. * (train_img_22 - train_img_22.min()) / (train_img_22.max() - train_img_22.min())
 
                 logger.add_image('vis/feat',feat,epoch,dataformats='HWC')
                 logger.add_image('vis/conf_cont',conf_cont,epoch,dataformats='HWC')
@@ -641,33 +555,12 @@ def pretrain(args):
                 logger.add_image('vis/feat_cor',feat_cor,epoch,dataformats='HWC')
                 logger.add_image('vis/train_img_1',train_img_1.astype(np.uint8),epoch,dataformats='HWC')
                 logger.add_image('vis/train_img_2',train_img_2.astype(np.uint8),epoch,dataformats='HWC')
-                # logger.add_image('vis/obj_vis_quiver',vis_data['obj_vis']['quiver'],epoch,dataformats='HWC')
-                # logger.add_image('vis/obj_vis_heatmap',vis_data['obj_vis']['heatmap'],epoch,dataformats='HWC')
-                # logger.add_image('vis/obj_vis_histogram',vis_data['obj_vis']['histogram'],epoch,dataformats='HWC')
                 logger.add_image('vis/obj_vis_scatter',vis_data['obj_vis']['scatter'],epoch,dataformats='HWC')
                 logger.add_image('vis/obj1_sample_vis_scatter',vis_data['obj1_sample_vis']['scatter'],epoch,dataformats='HWC')
                 logger.add_image('vis/obj2_sample_vis_scatter',vis_data['obj2_sample_vis']['scatter'],epoch,dataformats='HWC')
                 logger.add_image('vis/dis_vis_scatter',vis_data['dis_vis']['scatter'],epoch,dataformats='HWC')
-                # logger.add_image('vis/train_img_12',train_img_12.astype(np.uint8),epoch,dataformats='HWC')
-                # logger.add_image('vis/train_img_22',train_img_22.astype(np.uint8),epoch,dataformats='HWC')
-
-                # cv2.imwrite('./vis/rank_1_img_1.png',train_img_1.astype(np.uint8))
-                # cv2.imwrite('./vis/rank_1_img_2.png',train_img_2.astype(np.uint8))
             
-        
-        
-            # logger.update({
-            #     'epoch':epoch,
-            #     'loss':total_loss,
-            #     'loss_obj':total_loss_obj,
-            #     'loss_height':total_loss_height,
-            #     'loss_dis':total_loss_dis,
-            #     'loss_conf':total_loss_conf,
-            #     'loss_feat':total_loss_feat,
-            #     'k':k.item(),
-            #     'lr_encoder':f"{adapter_optimizer.param_groups[0]['lr']:.7f}",
-            #     'lr_decoder':f"{optimizers[0].param_groups[0]['lr']:.7f}"
-            # })
+
             logger.add_scalar('loss/total_loss', total_loss, epoch)
             logger.add_scalar('loss/loss_obj', total_loss_obj, epoch)
             logger.add_scalar('loss/loss_dis', total_loss_dis, epoch)
@@ -680,21 +573,6 @@ def pretrain(args):
             logger.add_scalar('metrics/sp', total_sp, epoch)
             logger.add_scalar('metrics/sn', total_sn, epoch)
 
-        # if dist.get_rank() == 1:
-        #     train_img_1,train_img_2 = img1[0][0].permute(1,2,0).detach().cpu().numpy(),img2[0][0].permute(1,2,0).detach().cpu().numpy()
-        #     train_img_1 = 255. * (train_img_1 - train_img_1.min()) / (train_img_1.max() - train_img_1.min())
-        #     train_img_2 = 255. * (train_img_2 - train_img_2.min()) / (train_img_2.max() - train_img_2.min())
-        #     cv2.imwrite('./vis/rank_2_img_1.png',train_img_1.astype(np.uint8))
-        #     cv2.imwrite('./vis/rank_2_img_2.png',train_img_2.astype(np.uint8))
-        
-        # if dist.get_rank() == 2:
-        #     train_img_1,train_img_2 = img1[0][0].permute(1,2,0).detach().cpu().numpy(),img2[0][0].permute(1,2,0).detach().cpu().numpy()
-        #     train_img_1 = 255. * (train_img_1 - train_img_1.min()) / (train_img_1.max() - train_img_1.min())
-        #     train_img_2 = 255. * (train_img_2 - train_img_2.min()) / (train_img_2.max() - train_img_2.min())
-        #     cv2.imwrite('./vis/rank_3_img_1.png',train_img_1.astype(np.uint8))
-        #     cv2.imwrite('./vis/rank_3_img_2.png',train_img_2.astype(np.uint8))
-
-        # print(f"\n9---------debug:{dist.get_rank()}\n")
         dist.barrier()
     if dist.get_rank() == 0:
         logger.close()
@@ -717,17 +595,14 @@ if __name__ == '__main__':
     parser.add_argument('--lr_encoder_min',type=float,default=1e-7)
     parser.add_argument('--lr_encoder_max',type=float,default=5e-4)
     parser.add_argument('--lr_decoder_min',type=float,default=1e-7)
-    parser.add_argument('--lr_decoder_max',type=float,default=1e-3) #1e-3
+    parser.add_argument('--lr_decoder_max',type=float,default=1e-3)
     parser.add_argument('--min_loss',type=float,default=1e8)
     parser.add_argument('--log_prefix',type=str,default='')
     parser.add_argument('--dataset_select',type=str,default=None)
     parser.add_argument('--only_decoder_ratio',type=float,default=0.)
-    # parser.add_argument('--unfreeze_backbone_layers',type=str,default='23')
     parser.add_argument("--local_rank", default=os.getenv('LOCAL_RANK', -1), type=int)
 
     args = parser.parse_args()
-    # gpus = os.environ['CUDA_VISIBLE_DEVICES']
-    # args.multi_gpu = len(gpus.split(',')) > 1
 
     if args.local_rank != -1:
         torch.cuda.set_device(args.local_rank)
@@ -735,15 +610,10 @@ if __name__ == '__main__':
         args.device=torch.device("cuda", args.local_rank)
         torch.distributed.init_process_group(backend="nccl", init_method='env://')
 
-    # if args.batch_size % 4 != 0:
-    #     raise ValueError("Batch size must be divisible by 4")
-    # args.batch_size = args.batch_size // 4
-
     pprint = partial(print_on_main, rank=dist.get_rank())
 
-    # torch.manual_seed(42)
-    # np.random.seed(42)
-    # random.seed(42)
+    torch.manual_seed(42)
+    np.random.seed(42)
 
     warnings.filterwarnings("ignore", category=UserWarning)
     warnings.filterwarnings("ignore", category=FutureWarning)
