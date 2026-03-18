@@ -47,7 +47,7 @@ Overall, the framework consists of two major stages:
 
 ![Method Overview](./assets/model.png)
 
-In summary, BeyondTiePoints provides a new PBA paradigm for satellite imagery: it replaces sparse tie-point constraints with dense, learned, confidence-aware geometric consistency, and solves the alignment problem through coarse-to-fine global optimization. This makes the method particularly effective in challenging multi-view satellite scenarios where traditional tie-point-based adjustment is fragile.
+In summary, Beyond-Tie-Points provides a new PBA paradigm for satellite imagery: it replaces sparse tie-point constraints with dense, learned, confidence-aware geometric consistency, and solves the alignment problem through coarse-to-fine global optimization. This makes the method particularly effective in challenging multi-view satellite scenarios where traditional tie-point-based adjustment is fragile.
 
 ---
 
