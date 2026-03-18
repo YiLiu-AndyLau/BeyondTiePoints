@@ -1,4 +1,4 @@
-# BeyondTiePoints
+# Beyond-Tie-Points
 
 Beyond-Tie-Points is a multi-view satellite image alignment framework built around:
 
@@ -24,18 +24,30 @@ Beyond-Tie-Points is a multi-view satellite image alignment framework built arou
 - [Practical Notes](#practical-notes)
 - [Citation](#citation)
 
----
-
 ## Introduction
 
-Tie points are often sparse, noisy, or unstable under large appearance/geometry changes in satellite imagery. This project replaces pure tie-point dependence with a feature-driven alignment strategy:
+Beyond-Tie-Points is a multi-view satellite image alignment framework for **Planar Block Adjustment (PBA)** that moves beyond the traditional **match-then-adjust** pipeline based on sparse tie points. Instead of relying on a limited set of explicit correspondences, the method reformulates satellite image adjustment as a **global dense feature consistency optimization** problem. The goal is to estimate per-image affine corrections on top of the original RPC sensor models so that overlapping images become geometrically consistent across the whole block.
 
-- A pretrained encoder predicts dense descriptors and confidence maps.
-- The scene overlap is partitioned into geographic grids.
-- For each grid, pairwise feature consistency losses are used to optimize per-image affine corrections on RPC models.
-- A pyramid strategy progressively refines corrections from coarse to fine windows.
+This design is motivated by a key limitation of conventional tie-point-based PBA. In satellite imagery, tie points are often sparse, noisy, and unreliable under weak stereo geometry, large viewpoint changes, seasonal or radiometric variations, and especially in regions with inaccurate elevation or strong parallax such as high-rise urban areas. Errors introduced during feature extraction, matching, and outlier rejection can accumulate irreversibly in the classical cascaded workflow. BeyondTiePoints addresses this issue by optimizing alignment directly in a learned dense feature space, rather than depending on a small set of discrete matches.
 
-The implementation supports both single-process execution and distributed execution via the `--use_ddp` switch.
+At the core of the framework is a **confidence-aware dense feature extractor** built on a frozen DINOv3 ViT-L backbone with a lightweight trainable adapter. The extractor is trained with a **geographic coordinate regression proxy task**, which encourages the output features to be both:
+- **geospatially discriminative**, so that different ground locations can be distinguished reliably; and
+- **geo-locationally invariant**, so that homologous regions across different views produce similar descriptors despite changes in perspective, appearance, and imaging conditions.
+
+In addition to dense features, the extractor predicts a **pixel-wise confidence map**. This confidence map estimates the reliability of each region and is used to suppress the influence of geometrically unstable areas such as tall buildings, water, clouds, or other large-parallax structures. In this way, the method replaces the hard rejection of outliers used in conventional pipelines with a softer and more adaptive confidence-weighted formulation.
+
+To make dense global optimization practical, BeyondTiePoints adopts a **gridded coarse-to-fine strategy**. The overlapping area of the image block is partitioned into geographic grids, and high-confidence cells are selected for optimization. Within each selected cell, the method samples features from overlapping images, projects object-space locations through the current RPC + affine correction model, and minimizes the distance between corresponding dense features across views. Optimization proceeds hierarchically from coarse grids to finer grids, so that large low-frequency misalignments are corrected first, and higher-frequency residual errors are refined in later stages. This design improves both robustness to large initial errors and computational efficiency.
+
+Overall, the framework consists of two major stages:
+
+1. **Encoder pretraining**  
+   Learn dense descriptors and confidence maps using the geographic coordinate regression proxy task.
+2. **PBA optimization**  
+   Use confidence-weighted dense feature consistency over overlapping grids to optimize affine corrections for all images in the block.
+
+![Method Overview](./assets/model.png)
+
+In summary, BeyondTiePoints provides a new PBA paradigm for satellite imagery: it replaces sparse tie-point constraints with dense, learned, confidence-aware geometric consistency, and solves the alignment problem through coarse-to-fine global optimization. This makes the method particularly effective in challenging multi-view satellite scenarios where traditional tie-point-based adjustment is fragile.
 
 ---
 
@@ -222,10 +234,10 @@ Under `<root>/debug_output` (or `<root>/output_<experiment_id>`):
 If this code helps your work, please cite your paper and/or this repository in your publication.
 
 ```bibtex
-@misc{beyondtiepoints,
-  title  = {BeyondTiePoints},
-  author = {Authors},
-  year   = {2026},
-  note   = {Code repository}
+@inproceedings{liu2026beyond,
+  title={Beyond Tie Points: Satellite Image Block Adjustment based on Dense Feature Consistency},
+  author={Liu, Yi and Wan, Yi and Yu, Lei and Xia, Panwang and Wu, Qiong and Pei, Yingying and Huang, Xuejun and Zhang, Junjian and Cai, Xiangyuan and Hu, Hongwei and Zhang, Yongjun},
+  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  year={2026}
 }
 ```
