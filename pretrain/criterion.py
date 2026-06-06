@@ -30,19 +30,6 @@ def tanh_clamp(loss,r,max):
 def get_dis_matrix(points_a:torch.Tensor,points_b:torch.Tensor):
     return torch.cdist(points_a,points_b,p=2)
 
-def calculate_dynamic_weights(N: int, r: float) -> np.ndarray:
-    if not 0.0 <= r <= 1.0:
-        raise ValueError(" 'r'  [0.0, 1.0] 。")
-    if N < 1:
-        raise ValueError(" 'N' 1。")
-
-    initial_weights = np.arange(N, 0, -1, dtype=np.float32)
-    final_weights = np.arange(1, N + 1, dtype=np.float32)
-    weights = (1 - r) * initial_weights + r * final_weights
-    normalized_weights = weights / np.sum(weights)
-    
-    return normalized_weights
-
 @torch.no_grad()
 def get_near_points(points1,points2,batch_size,threshold):
     point_num = len(points1)
